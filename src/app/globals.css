@@ -24,3 +24,11 @@ body {
   color: var(--foreground);
   font-family: Arial, Helvetica, sans-serif;
 }
+
+html,
+body {
+  height: 100%;
+  overflow: hidden; /* 禁止外层滚动 */
+  margin: 0;
+  padding: 0;
+}

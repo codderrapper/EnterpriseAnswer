@@ -1,103 +1,238 @@
-import Image from "next/image";
+"use client";
+
+import { useState, useEffect, useRef, useLayoutEffect } from "react";
+import MarkdownRenderer from "@/components/MarkdownRenderer";
+import UploadBox from "@/components/UploadBox";
+
+type Source = {
+  id: number;
+  document_id: number;
+  snippet: string;
+  similarity: string;
+};
+
+type Message = {
+  id: string;
+  role: "user" | "assistant";
+  content: string;
+  sources?: Source[];
+};
 
 export default function Home() {
-  return (
-    <div className="font-sans grid grid-rows-[20px_1fr_20px] items-center justify-items-center min-h-screen p-8 pb-20 gap-16 sm:p-20">
-      <main className="flex flex-col gap-[32px] row-start-2 items-center sm:items-start">
-        <Image
-          className="dark:invert"
-          src="/next.svg"
-          alt="Next.js logo"
-          width={180}
-          height={38}
-          priority
-        />
-        <ol className="font-mono list-inside list-decimal text-sm/6 text-center sm:text-left">
-          <li className="mb-2 tracking-[-.01em]">
-            Get started by editing{" "}
-            <code className="bg-black/[.05] dark:bg-white/[.06] font-mono font-semibold px-1 py-0.5 rounded">
-              src/app/page.tsx
-            </code>
-            .
-          </li>
-          <li className="tracking-[-.01em]">
-            Save and see your changes instantly.
-          </li>
-        </ol>
+  const [input, setInput] = useState("");
+  const [messages, setMessages] = useState<Message[]>([]);
+  const [isLoading, setLoading] = useState(false);
+  const chatBoxRef = useRef<HTMLDivElement | null>(null);
 
-        <div className="flex gap-4 items-center flex-col sm:flex-row">
-          <a
-            className="rounded-full border border-solid border-transparent transition-colors flex items-center justify-center bg-foreground text-background gap-2 hover:bg-[#383838] dark:hover:bg-[#ccc] font-medium text-sm sm:text-base h-10 sm:h-12 px-4 sm:px-5 sm:w-auto"
-            href="https://vercel.com/new?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-            target="_blank"
-            rel="noopener noreferrer"
-          >
-            <Image
-              className="dark:invert"
-              src="/vercel.svg"
-              alt="Vercel logomark"
-              width={20}
-              height={20}
-            />
-            Deploy now
-          </a>
-          <a
-            className="rounded-full border border-solid border-black/[.08] dark:border-white/[.145] transition-colors flex items-center justify-center hover:bg-[#f2f2f2] dark:hover:bg-[#1a1a1a] hover:border-transparent font-medium text-sm sm:text-base h-10 sm:h-12 px-4 sm:px-5 w-full sm:w-auto md:w-[158px]"
-            href="https://nextjs.org/docs?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-            target="_blank"
-            rel="noopener noreferrer"
-          >
-            Read our docs
-          </a>
+  // 💾 从本地恢复历史
+  useEffect(() => {
+    const saved = localStorage.getItem("chat_history_v2");
+    if (saved) setMessages(JSON.parse(saved));
+  }, []);
+
+  // 💾 自动保存
+  useEffect(() => {
+    if (messages.length > 0)
+      localStorage.setItem("chat_history_v2", JSON.stringify(messages));
+  }, [messages]);
+
+  // 🧭 每次消息变化后自动滚到底
+  useLayoutEffect(() => {
+    const el = chatBoxRef.current;
+    if (!el) return;
+    requestAnimationFrame(() => {
+      el.scrollTo({ top: el.scrollHeight, behavior: "smooth" });
+    });
+  }, [messages]);
+
+  // 🚀 发送提问
+  async function handleSend() {
+    if (!input.trim()) return;
+    const userInput = input.trim();
+    setInput("");
+    setLoading(true);
+
+    // Add user + empty assistant messages
+    setMessages((prev) => [
+      ...prev,
+      { id: crypto.randomUUID(), role: "user", content: userInput },
+      { id: crypto.randomUUID(), role: "assistant", content: "" },
+    ]);
+
+    try {
+      const res = await fetch("/api/search", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ question: userInput }),
+      });
+
+      if (!res.body) throw new Error("No response body");
+
+      const reader = res.body.getReader();
+      const decoder = new TextDecoder();
+      let aiResponse = "";
+
+      while (true) {
+        const { done, value } = await reader.read();
+        if (done) break;
+        const chunk = decoder.decode(value);
+        aiResponse += chunk;
+
+        setMessages((prev) => {
+          const copy = [...prev];
+          const last = copy[copy.length - 1];
+          if (last.role === "assistant") last.content = aiResponse;
+          return copy;
+        });
+
+        // keep scroll near bottom
+        if (chatBoxRef.current) {
+          const el = chatBoxRef.current;
+          if (el.scrollHeight - el.scrollTop - el.clientHeight < 120) {
+            el.scrollTop = el.scrollHeight;
+          }
+        }
+      }
+    } catch (err) {
+      console.error(err);
+      setMessages((prev) => [
+        ...prev,
+        {
+          id: crypto.randomUUID(),
+          role: "assistant",
+          content: "❌ 出错啦，请稍后重试。",
+        },
+      ]);
+    }
+
+    setLoading(false);
+  }
+  // async function handleSend() {
+  //   if (!input.trim()) return;
+  //   const userInput = input.trim();
+  //   setInput("");
+  //   setLoading(true);
+
+  //   // 用户输入
+  //   setMessages((prev) => [
+  //     ...prev,
+  //     { id: crypto.randomUUID(), role: "user", content: userInput },
+  //     { id: crypto.randomUUID(), role: "assistant", content: "" },
+  //   ]);
+
+  //   try {
+  //     const res = await fetch("/api/search", {
+  //       method: "POST",
+  //       headers: { "Content-Type": "application/json" },
+  //       body: JSON.stringify({ question: userInput }),
+  //     });
+
+  //     const data = await res.json();
+
+  //     setMessages((prev) => {
+  //       const copy = [...prev];
+  //       const last = copy[copy.length - 1];
+  //       if (last.role === "assistant") {
+  //         last.content = data.answer || "No answer.";
+  //         last.sources = data.sources || [];
+  //       }
+  //       return copy;
+  //     });
+  //   } catch (err) {
+  //     console.error(err);
+  //     setMessages((prev) => [
+  //       ...prev,
+  //       {
+  //         id: crypto.randomUUID(),
+  //         role: "assistant",
+  //         content: "❌ 出错啦，请稍后重试。",
+  //       },
+  //     ]);
+  //   }
+
+  //   setLoading(false);
+  // }
+
+  // 🧱 渲染单条消息
+  function ChatMessage({ msg }: { msg: Message }) {
+    const isAI = msg.role === "assistant";
+    return (
+      <div
+        className={`max-w-[85%] rounded-lg p-3 ${
+          isAI
+            ? "bg-white text-gray-900 self-start shadow-sm border"
+            : "bg-blue-500 text-white self-end ml-auto"
+        }`}
+      >
+        <MarkdownRenderer content={msg.content} />
+        {/* 显示来源 */}
+        {isAI && msg.sources && msg.sources.length > 0 && (
+          <div className="mt-2 text-xs text-gray-600 border-t pt-1">
+            <strong>来源：</strong>
+            {msg.sources.map((s, i) => (
+              <div key={s.id} className="truncate">
+                📄 {s.snippet}（相似度 {s.similarity}）
+              </div>
+            ))}
+          </div>
+        )}
+      </div>
+    );
+  }
+
+  return (
+    <main className="h-[100dvh] max-w-2xl mx-auto flex flex-col bg-gray-100 text-gray-900 border-x">
+      {/* 顶部标题 */}
+      <header className="p-4 border-b bg-white text-center font-bold text-xl">
+        企业文档智能助手
+      </header>
+
+      {/* 上传组件 */}
+      <div className="p-4">
+        <UploadBox />
+      </div>
+
+      {/* 聊天内容区 */}
+      <section
+        ref={chatBoxRef}
+        className="flex-1 overflow-y-auto bg-gray-50 p-4 space-y-3 scroll-smooth"
+      >
+        {messages.map((m) => (
+          <ChatMessage key={m.id} msg={m} />
+        ))}
+      </section>
+
+      {isLoading && (
+        <div className="self-start text-gray-500 text-sm animate-pulse px-3">
+          🤖 AI 正在思考中…
         </div>
-      </main>
-      <footer className="row-start-3 flex gap-[24px] flex-wrap items-center justify-center">
-        <a
-          className="flex items-center gap-2 hover:underline hover:underline-offset-4"
-          href="https://nextjs.org/learn?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-          target="_blank"
-          rel="noopener noreferrer"
+      )}
+      {/* 底部输入区 */}
+      <footer className="p-4 border-t bg-white flex gap-2">
+        <textarea
+          value={input}
+          onChange={(e) => setInput(e.target.value)}
+          onKeyDown={(e) => {
+            if (e.key === "Enter" && !e.shiftKey && !isLoading) {
+              e.preventDefault();
+              handleSend();
+            }
+          }}
+          placeholder="请输入问题..."
+          disabled={isLoading}
+          className="flex-1 border rounded p-2 resize-none overflow-hidden focus:outline-none focus:ring-2 focus:ring-blue-400"
+          style={{ minHeight: "40px", maxHeight: "200px" }}
+        />
+        <button
+          onClick={handleSend}
+          disabled={isLoading}
+          className={`px-4 py-2 rounded text-white ${
+            isLoading ? "bg-gray-400" : "bg-blue-500 hover:bg-blue-600"
+          }`}
         >
-          <Image
-            aria-hidden
-            src="/file.svg"
-            alt="File icon"
-            width={16}
-            height={16}
-          />
-          Learn
-        </a>
-        <a
-          className="flex items-center gap-2 hover:underline hover:underline-offset-4"
-          href="https://vercel.com/templates?framework=next.js&utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-          target="_blank"
-          rel="noopener noreferrer"
-        >
-          <Image
-            aria-hidden
-            src="/window.svg"
-            alt="Window icon"
-            width={16}
-            height={16}
-          />
-          Examples
-        </a>
-        <a
-          className="flex items-center gap-2 hover:underline hover:underline-offset-4"
-          href="https://nextjs.org?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-          target="_blank"
-          rel="noopener noreferrer"
-        >
-          <Image
-            aria-hidden
-            src="/globe.svg"
-            alt="Globe icon"
-            width={16}
-            height={16}
-          />
-          Go to nextjs.org →
-        </a>
+          {isLoading ? "思考中..." : "发送"}
+        </button>
       </footer>
-    </div>
+    </main>
   );
 }
