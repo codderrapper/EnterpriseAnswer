@@ -1,39 +1,36 @@
+// src/app/page.tsx
 "use client";
 
-import { useState, useEffect, useRef, useLayoutEffect } from "react";
+import { useEffect, useRef, useLayoutEffect } from "react";
 import MarkdownRenderer from "@/components/MarkdownRenderer";
 import UploadBox from "@/components/UploadBox";
-
-type Source = {
-  id: number;
-  document_id: number;
-  snippet: string;
-  similarity: string;
-};
-
-type Message = {
-  id: string;
-  role: "user" | "assistant";
-  content: string;
-  sources?: Source[];
-};
+import AgentStepsPanel from "@/components/AgentStepsPanel";
+import type { Message } from "@/types/chat";
+import { useChatStore } from "@/store/chatStore";
 
 export default function Home() {
-  const [input, setInput] = useState("");
-  const [messages, setMessages] = useState<Message[]>([]);
-  const [isLoading, setLoading] = useState(false);
   const chatBoxRef = useRef<HTMLDivElement | null>(null);
+
+  const {
+    messages,
+    steps,
+    isLoading,
+    input,
+    setInput,
+    sendMessage,
+    hydrateFromLocal,
+  } = useChatStore();
 
   // 💾 从本地恢复历史
   useEffect(() => {
-    const saved = localStorage.getItem("chat_history_v2");
-    if (saved) setMessages(JSON.parse(saved));
-  }, []);
+    hydrateFromLocal();
+  }, [hydrateFromLocal]);
 
-  // 💾 自动保存
+  // 💾 自动保存到本地（持久化对话）
   useEffect(() => {
-    if (messages.length > 0)
+    if (messages.length > 0 && typeof window !== "undefined") {
       localStorage.setItem("chat_history_v2", JSON.stringify(messages));
+    }
   }, [messages]);
 
   // 🧭 每次消息变化后自动滚到底
@@ -45,113 +42,10 @@ export default function Home() {
     });
   }, [messages]);
 
-  // 🚀 发送提问
+  // 🚀 发送提问（调用 store 的 sendMessage）
   async function handleSend() {
-    if (!input.trim()) return;
-    const userInput = input.trim();
-    setInput("");
-    setLoading(true);
-
-    // Add user + empty assistant messages
-    setMessages((prev) => [
-      ...prev,
-      { id: crypto.randomUUID(), role: "user", content: userInput },
-      { id: crypto.randomUUID(), role: "assistant", content: "" },
-    ]);
-
-    try {
-      const res = await fetch("/api/search", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ question: userInput }),
-      });
-
-      if (!res.body) throw new Error("No response body");
-
-      const reader = res.body.getReader();
-      const decoder = new TextDecoder();
-      let aiResponse = "";
-
-      while (true) {
-        const { done, value } = await reader.read();
-        if (done) break;
-        const chunk = decoder.decode(value);
-        aiResponse += chunk;
-
-        setMessages((prev) => {
-          const copy = [...prev];
-          const last = copy[copy.length - 1];
-          if (last.role === "assistant") last.content = aiResponse;
-          return copy;
-        });
-
-        // keep scroll near bottom
-        if (chatBoxRef.current) {
-          const el = chatBoxRef.current;
-          if (el.scrollHeight - el.scrollTop - el.clientHeight < 120) {
-            el.scrollTop = el.scrollHeight;
-          }
-        }
-      }
-    } catch (err) {
-      console.error(err);
-      setMessages((prev) => [
-        ...prev,
-        {
-          id: crypto.randomUUID(),
-          role: "assistant",
-          content: "❌ 出错啦，请稍后重试。",
-        },
-      ]);
-    }
-
-    setLoading(false);
+    await sendMessage();
   }
-  // async function handleSend() {
-  //   if (!input.trim()) return;
-  //   const userInput = input.trim();
-  //   setInput("");
-  //   setLoading(true);
-
-  //   // 用户输入
-  //   setMessages((prev) => [
-  //     ...prev,
-  //     { id: crypto.randomUUID(), role: "user", content: userInput },
-  //     { id: crypto.randomUUID(), role: "assistant", content: "" },
-  //   ]);
-
-  //   try {
-  //     const res = await fetch("/api/search", {
-  //       method: "POST",
-  //       headers: { "Content-Type": "application/json" },
-  //       body: JSON.stringify({ question: userInput }),
-  //     });
-
-  //     const data = await res.json();
-
-  //     setMessages((prev) => {
-  //       const copy = [...prev];
-  //       const last = copy[copy.length - 1];
-  //       if (last.role === "assistant") {
-  //         last.content = data.answer || "No answer.";
-  //         last.sources = data.sources || [];
-  //       }
-  //       return copy;
-  //     });
-  //   } catch (err) {
-  //     console.error(err);
-  //     setMessages((prev) => [
-  //       ...prev,
-  //       {
-  //         id: crypto.randomUUID(),
-  //         role: "assistant",
-  //         content: "❌ 出错啦，请稍后重试。",
-  //       },
-  //     ]);
-  //   }
-
-  //   setLoading(false);
-  // }
 
   // 🧱 渲染单条消息
   function ChatMessage({ msg }: { msg: Message }) {
@@ -169,7 +63,7 @@ export default function Home() {
         {isAI && msg.sources && msg.sources.length > 0 && (
           <div className="mt-2 text-xs text-gray-600 border-t pt-1">
             <strong>来源：</strong>
-            {msg.sources.map((s, i) => (
+            {msg.sources.map((s) => (
               <div key={s.id} className="truncate">
                 📄 {s.snippet}（相似度 {s.similarity}）
               </div>
@@ -192,6 +86,9 @@ export default function Home() {
         <UploadBox />
       </div>
 
+      {/* Agent 执行步骤面板（已封装组件，可折叠） */}
+      <AgentStepsPanel steps={steps} />
+
       {/* 聊天内容区 */}
       <section
         ref={chatBoxRef}
@@ -207,6 +104,7 @@ export default function Home() {
           🤖 AI 正在思考中…
         </div>
       )}
+
       {/* 底部输入区 */}
       <footer className="p-4 border-t bg-white flex gap-2">
         <textarea
