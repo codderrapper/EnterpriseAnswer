@@ -61,11 +61,19 @@ export default function Home() {
         <MarkdownRenderer content={msg.content} />
         {/* 显示来源 */}
         {isAI && msg.sources && msg.sources.length > 0 && (
-          <div className="mt-2 text-xs text-gray-600 border-t pt-1">
+          <div className="mt-2 text-xs text-gray-600 border-t pt-1 space-y-1">
             <strong>来源：</strong>
             {msg.sources.map((s) => (
               <div key={s.id} className="truncate">
-                📄 {s.snippet}（相似度 {s.similarity}）
+                📄{" "}
+                <a
+                  href={`/documents/${s.document_id}?chunk=${s.id}`}
+                  className="text-blue-600 hover:underline"
+                  title={s.snippet}
+                >
+                  {s.snippet}
+                </a>
+                <span className="text-gray-500">（相似度 {s.similarity}）</span>
               </div>
             ))}
           </div>
@@ -77,8 +85,11 @@ export default function Home() {
   return (
     <main className="h-[100dvh] max-w-2xl mx-auto flex flex-col bg-gray-100 text-gray-900 border-x">
       {/* 顶部标题 */}
-      <header className="p-4 border-b bg-white text-center font-bold text-xl">
-        企业文档智能助手
+      <header className="p-4 border-b bg-white flex items-center justify-between">
+        <div className="font-bold text-xl">企业文档智能助手</div>
+        <a href="/documents" className="text-sm text-blue-600 hover:underline">
+          文档管理 →
+        </a>
       </header>
 
       {/* 上传组件 */}
