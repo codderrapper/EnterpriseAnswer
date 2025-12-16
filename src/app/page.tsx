@@ -19,6 +19,10 @@ export default function Home() {
     setInput,
     sendMessage,
     hydrateFromLocal,
+    topK,
+    threshold,
+    setTopK,
+    setThreshold,
   } = useChatStore();
 
   // 💾 从本地恢复历史
@@ -90,7 +94,47 @@ export default function Home() {
         <a href="/documents" className="text-sm text-blue-600 hover:underline">
           文档管理 →
         </a>
+        <a href="/runs" className="text-blue-600 hover:underline">
+          运行历史 →
+        </a>
       </header>
+
+      {/* RAG 检索配置面板 */}
+      <div className="px-4 pt-3">
+        <div className="bg-white border rounded p-3 text-xs text-gray-700 flex flex-wrap gap-3 items-center justify-between">
+          <div className="font-medium text-gray-800">
+            🔧 检索配置（影响 RAG 召回）
+          </div>
+          <div className="flex flex-wrap gap-3 items-center">
+            <label className="flex items-center gap-1">
+              <span>TopK：</span>
+              <input
+                type="number"
+                min={1}
+                max={20}
+                value={topK}
+                onChange={(e) => setTopK(Number(e.target.value))}
+                className="w-16 border rounded px-1 py-0.5 text-xs"
+              />
+            </label>
+            <label className="flex items-center gap-1">
+              <span>阈值：</span>
+              <input
+                type="number"
+                step={0.05}
+                min={0}
+                max={1}
+                value={threshold}
+                onChange={(e) => setThreshold(Number(e.target.value))}
+                className="w-16 border rounded px-1 py-0.5 text-xs"
+              />
+            </label>
+            <span className="text-[11px] text-gray-500">
+              TopK 越大召回越多，阈值越高越严格。
+            </span>
+          </div>
+        </div>
+      </div>
 
       {/* 上传组件 */}
       <div className="p-4">

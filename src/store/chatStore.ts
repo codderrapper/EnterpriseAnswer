@@ -1,38 +1,61 @@
-// src/store/chatStore.ts
+/**
+ * ⭐ 面试亮点（useChatStore）：
+ * 1. 使用 Zustand 管理 Chat 的业务状态（messages / steps / loading / input），并集中封装 sendMessage 流程，组件只负责展示。
+ * 2. 将 RAG 检索配置（topK / threshold）放入 store，由前端 UI 控制，并在调用 /api/search 时透传到后端，
+ *    体现“AI 应用不是写死参数，而是具备可配置能力”，更像平台而非 Demo。
+ * 3. 在 sendMessage 中统一处理 JSONL 流解析（step / sources / delta / error），将网络协议与 UI 渲染解耦，符合前端工程化设计。
+ */
+
 "use client";
 
 import { create } from "zustand";
 import type { Message, Source } from "@/types/chat";
 import type { AgentStep, StepStatus } from "@/types/agent";
 
-// 🧠 Chat 状态 & 行为
 interface ChatState {
   messages: Message[];
   steps: AgentStep[];
   isLoading: boolean;
 
-  // 输入框文本不一定要放 store，这里保留接口方便以后扩展
   input: string;
   setInput: (v: string) => void;
 
-  // 发送消息（内部负责：追加消息、调用后端、流式解析、更新 steps）
+  // 🧠 RAG 检索配置：由前端可视化面板控制
+  topK: number; // 向量检索返回多少条文档片段
+  threshold: number; // 相似度阈值
+
+  setTopK: (k: number) => void;
+  setThreshold: (t: number) => void;
+
   sendMessage: () => Promise<void>;
 
-  // 从本地存储恢复历史（在页面 useEffect 里调用）
   hydrateFromLocal: () => void;
 }
 
-// 🚀 Chat Store：集中管理 Chat / Steps / Loading 状态
 export const useChatStore = create<ChatState>((set, get) => ({
   messages: [],
   steps: [],
   isLoading: false,
   input: "",
 
-  setInput: (v: string) => set({ input: v }),
+  // 默认配置：topK=5, 阈值=0.4，与你之前后端逻辑对齐
+  topK: 5,
+  threshold: 0.4,
+
+  setInput: (v) => set({ input: v }),
+
+  setTopK: (k) =>
+    set({
+      topK: Number.isFinite(k) && k > 0 ? Math.min(Math.floor(k), 20) : 5,
+    }),
+
+  setThreshold: (t) =>
+    set({
+      threshold:
+        Number.isFinite(t) && t >= 0 && t <= 1 ? t : 0.4,
+    }),
 
   hydrateFromLocal: () => {
-    // 只在浏览器环境下有 localStorage
     if (typeof window === "undefined") return;
     try {
       const raw = localStorage.getItem("chat_history_v2");
@@ -45,11 +68,10 @@ export const useChatStore = create<ChatState>((set, get) => ({
   },
 
   sendMessage: async () => {
-    const { input, isLoading, messages } = get();
+    const { input, isLoading, messages, topK, threshold } = get();
     const userInput = input.trim();
     if (!userInput || isLoading) return;
 
-    // ✨ 构造用户消息 + 空的 AI 消息（用于流式填充）
     const userMessage: Message = {
       id: crypto.randomUUID(),
       role: "user",
@@ -62,13 +84,11 @@ export const useChatStore = create<ChatState>((set, get) => ({
       sources: [],
     };
 
-    // 历史对话：用于“上下文记忆”透传给后端
     const historyForBackend = messages.map((m) => ({
       role: m.role,
       content: m.content,
     }));
 
-    // 先同步更新 UI：追加消息、清空步骤、进入 loading 状态
     set({
       messages: [...messages, userMessage, assistantMessage],
       steps: [],
@@ -85,6 +105,8 @@ export const useChatStore = create<ChatState>((set, get) => ({
         body: JSON.stringify({
           question: userInput,
           history: historyForBackend,
+          topK,
+          threshold,
         }),
       });
 
@@ -97,7 +119,6 @@ export const useChatStore = create<ChatState>((set, get) => ({
       let buffer = "";
       let currentContent = "";
 
-      // 🔁 循环读取 server 返回的 chunk（JSONL 协议）
       while (!done) {
         const { value, done: doneReading } = await reader.read();
         done = doneReading;
@@ -117,7 +138,6 @@ export const useChatStore = create<ChatState>((set, get) => ({
             continue;
           }
 
-          // 🧩 按 type 分流：step / sources / delta / error
           if (data.type === "step") {
             const step = data.data as {
               id: string;
@@ -130,10 +150,8 @@ export const useChatStore = create<ChatState>((set, get) => ({
               const prevSteps = prev.steps;
               const idx = prevSteps.findIndex((s) => s.id === step.id);
               if (idx === -1) {
-                // 新步骤：追加
                 return { steps: [...prevSteps, step] };
               }
-              // 已存在：覆盖更新
               const copy = [...prevSteps];
               copy[idx] = { ...copy[idx], ...step };
               return { steps: copy };
@@ -172,7 +190,6 @@ export const useChatStore = create<ChatState>((set, get) => ({
         }
       }
 
-      // buffer 残留（一般不会有）
       if (buffer.trim()) {
         try {
           const data = JSON.parse(buffer);
@@ -195,7 +212,6 @@ export const useChatStore = create<ChatState>((set, get) => ({
       }
     } catch (err) {
       console.error(err);
-      // 出错时追加一条错误消息
       set((prev) => ({
         messages: [
           ...prev.messages,
