@@ -59,13 +59,18 @@ export default function MarkdownRenderer({ content }: Props) {
           // 🖼️ 图片
           img: ({ src, alt }) => {
             // 🚫 拦截无效/相对路径，避免 Next.js 误请求
-            if (!src || !/^https?:\/\//.test(src)) {
+            // ✅ react-markdown 的类型里 src 可能不是 string（比如 Blob），这里做类型收窄
+            const url = typeof src === "string" ? src : "";
+
+            // 🚫 拦截无效/相对路径，避免 Next.js 误请求
+            if (!url || !/^https?:\/\//.test(url)) {
               return (
                 <div className="my-3 text-gray-400 text-sm italic text-center">
                   [图片加载失败：无效链接]
                 </div>
               );
             }
+
             return (
               <img
                 src={src}
@@ -87,16 +92,27 @@ export default function MarkdownRenderer({ content }: Props) {
           ),
 
           // 💻 代码与代码块
-          code: ({ inline, children }) =>
-            inline ? (
-              <code className="bg-gray-100 text-red-600 px-1 py-0.5 rounded">
-                {children}
-              </code>
-            ) : (
+          code: ({ className, children, ...props }) => {
+            /**
+             * ✅ 面试可讲点：
+             * react-markdown 新版类型不再直接提供 inline 字段，
+             * 常见做法是通过 className 是否包含 language- 来区分代码块/行内代码。
+             */
+            const isBlock =
+              typeof className === "string" && /language-/.test(className);
+            if (!isBlock) {
+              return (
+                <code className="bg-gray-100 text-red-600 px-1 py-0.5 rounded">
+                  {children}
+                </code>
+              );
+            }
+            return (
               <pre className="bg-gray-900 text-gray-100 p-3 rounded-lg overflow-auto text-sm my-2">
-                <code>{children}</code>
+                <code className={className}>{children}</code>
               </pre>
-            ),
+            );
+          },
 
           // 🧾 表格
           table: ({ children }) => (

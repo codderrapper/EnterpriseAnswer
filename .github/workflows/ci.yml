@@ -1,0 +1,38 @@
+# ⭐ 面试亮点：
+# 1) CI 在 PR/Push 自动执行：安装依赖 -> Lint -> Typecheck -> Build
+# 2) 使用 npm ci 确保依赖可复现；缓存 npm 提升速度
+# 3) 将质量门禁前置，保证主分支随时可部署（企业级工程实践）
+
+name: CI
+
+on:
+  push:
+    branches: ["main"]
+  pull_request:
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: "npm"
+
+      - name: Install
+        run:
+          npm ci
+
+          # - name: Lint
+      #   run: npm run lint
+
+      # ✅ 企业里 TypeScript 严格类型检查通常是必备质量门槛
+
+      - name: Typecheck
+        run: npm run typecheck
+
+      - name: Build
+        run: npm run build

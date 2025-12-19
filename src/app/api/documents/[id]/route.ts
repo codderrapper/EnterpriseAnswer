@@ -25,10 +25,13 @@ type ChunkRow = {
 
 export async function GET(
   req: NextRequest,
-  ctx: { params: { id: string } }
+  ctx: { params: Promise<{ id: string }> }
 ) {
   try {
-    const docId = Number(ctx.params.id);
+    // ✅ Next.js 某些版本的类型生成会把 params 推成 Promise，这里用 await 兼容
+    const { id } = await ctx.params;
+    const docId = Number(id);
+
     if (!Number.isFinite(docId)) {
       return NextResponse.json({ error: "Invalid document id" }, { status: 400 });
     }

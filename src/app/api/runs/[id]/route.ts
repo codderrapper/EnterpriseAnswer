@@ -11,10 +11,12 @@ export const runtime = "nodejs";
 
 export async function GET(
   req: NextRequest,
-  ctx: { params: { id: string } }
+  ctx: { params: Promise<{ id: string }> }
 ) {
   try {
-    const runId = Number(ctx.params.id);
+    const { id } = await ctx.params;
+    const runId = Number(id);
+    
     if (!Number.isFinite(runId)) {
       return NextResponse.json({ error: "Invalid id" }, { status: 400 });
     }
@@ -31,10 +33,7 @@ export async function GET(
     }
 
     if (!data) {
-      return NextResponse.json(
-        { error: "Run not found" },
-        { status: 404 }
-      );
+      return NextResponse.json({ error: "Run not found" }, { status: 404 });
     }
 
     return NextResponse.json(data);
