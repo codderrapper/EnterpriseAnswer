@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import { getSupabaseClient } from "@/lib/supabaseClient";
-import { embeddings } from "@/lib/embedClient";
-import { aiClient, AI_MODEL } from "@/lib/ai-client";
+import { getEmbeddings } from "@/lib/embedClient";
+import { getAIClient, AI_MODEL } from "@/lib/ai-client";
 
 export const runtime = "nodejs";
 
@@ -9,6 +9,8 @@ export async function POST(req: Request) {
   try {
     const { question } = await req.json();
     if (!question) throw new Error("Missing question");
+
+    const embeddings = getEmbeddings();
 
     // 1️⃣ Embed question
     const [queryVector] = await embeddings.embedDocuments([question]);
@@ -38,6 +40,8 @@ ${context}
 【问题】
 ${question}
 `;
+
+    const aiClient = getAIClient();
 
     // 3️⃣ Start streaming response
     const completion = await aiClient.chat.completions.create({

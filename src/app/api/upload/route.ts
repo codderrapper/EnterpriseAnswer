@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { getSupabaseClient } from "@/lib/supabaseClient";
-import { embeddings } from "@/lib/embedClient";
+import { getEmbeddings } from "@/lib/embedClient";
 
 export const runtime = "nodejs";
 
@@ -34,7 +34,7 @@ export async function POST(req: Request) {
     const text = buffer.toString("utf-8");
     console.log("✅ Extracted text preview:", text.slice(0, 100));
     const supabase = getSupabaseClient();
-    
+
     // 🧱 Step 1: Save the original document
     const { data: docData, error: docErr } = await supabase
       .from("documents")
@@ -55,6 +55,8 @@ export async function POST(req: Request) {
     // 🧠 Step 3: Create embeddings for each chunk
     for (const chunk of chunks) {
       try {
+        const embeddings = getEmbeddings();
+
         const [vector] = await embeddings.embedDocuments([chunk]);
         console.log("vector: ", vector);
 

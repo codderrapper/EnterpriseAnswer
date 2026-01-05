@@ -9,8 +9,8 @@
 
 import { NextResponse } from "next/server";
 import { getSupabaseClient } from "@/lib/supabaseClient";
-import { embeddings } from "@/lib/embedClient";
-import { aiClient, AI_MODEL } from "@/lib/ai-client";
+import { getEmbeddings } from "@/lib/embedClient";
+import { getAIClient, AI_MODEL } from "@/lib/ai-client";
 
 export const runtime = "nodejs";
 
@@ -118,6 +118,8 @@ export async function POST(req: Request) {
 
           // Step 2：生成查询向量
           sendStep("embed", "生成查询向量", "running");
+          const embeddings = getEmbeddings();
+
           const [queryVector] = await embeddings.embedDocuments([question]);
           sendStep("embed", "生成查询向量", "done");
 
@@ -140,12 +142,7 @@ export async function POST(req: Request) {
           );
 
           if (error) {
-            sendStep(
-              "retrieve",
-              "检索相关文档片段",
-              "error",
-              error.message
-            );
+            sendStep("retrieve", "检索相关文档片段", "error", error.message);
             throw error;
           }
 
@@ -155,12 +152,7 @@ export async function POST(req: Request) {
           sourcesForLog = matches;
 
           if (!matches.length) {
-            sendStep(
-              "retrieve",
-              "检索相关文档片段",
-              "done",
-              "未找到相关内容"
-            );
+            sendStep("retrieve", "检索相关文档片段", "done", "未找到相关内容");
             const noAns = "文档中未提及相关信息。";
             answerForLog = noAns;
             sendJSON({
@@ -215,7 +207,8 @@ export async function POST(req: Request) {
 
           const historyMessages =
             history?.map((m) => ({
-              role: m.role === "user" ? ("user" as const) : ("assistant" as const),
+              role:
+                m.role === "user" ? ("user" as const) : ("assistant" as const),
               content: m.content,
             })) ?? [];
 
@@ -226,6 +219,8 @@ export async function POST(req: Request) {
 
           // Step 4：调用 LLM 生成回答
           sendStep("llm", "生成回答", "running");
+
+          const aiClient = getAIClient();
 
           const completion = await aiClient.chat.completions.create({
             model: AI_MODEL,
