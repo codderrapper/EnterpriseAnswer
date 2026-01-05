@@ -5,7 +5,7 @@
  */
 
 import { NextRequest, NextResponse } from "next/server";
-import { supabase } from "@/lib/supabaseClient";
+import { getSupabaseClient } from "@/lib/supabaseClient";
 
 export const runtime = "nodejs";
 
@@ -20,6 +20,8 @@ export async function GET(
     if (!Number.isFinite(runId)) {
       return NextResponse.json({ error: "Invalid id" }, { status: 400 });
     }
+
+    const supabase = getSupabaseClient();
 
     const { data, error } = await supabase
       .from("run_history")

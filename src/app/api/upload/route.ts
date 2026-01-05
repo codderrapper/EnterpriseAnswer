@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { supabase } from "@/lib/supabaseClient";
+import { getSupabaseClient } from "@/lib/supabaseClient";
 import { embeddings } from "@/lib/embedClient";
 
 export const runtime = "nodejs";
@@ -33,7 +33,8 @@ export async function POST(req: Request) {
 
     const text = buffer.toString("utf-8");
     console.log("✅ Extracted text preview:", text.slice(0, 100));
-
+    const supabase = getSupabaseClient();
+    
     // 🧱 Step 1: Save the original document
     const { data: docData, error: docErr } = await supabase
       .from("documents")
@@ -43,26 +44,26 @@ export async function POST(req: Request) {
 
     if (docErr) throw docErr;
     const documentId = docData.id;
-    console.log('docData: ', docData);
+    console.log("docData: ", docData);
     console.log("📄 Document inserted:", documentId);
 
     // 🧩 Step 2: Split into chunks
     const chunks = splitText(text);
-    console.log('chunks: ', chunks);
+    console.log("chunks: ", chunks);
     console.log("🪣 Split into", chunks.length, "chunks");
 
     // 🧠 Step 3: Create embeddings for each chunk
     for (const chunk of chunks) {
       try {
         const [vector] = await embeddings.embedDocuments([chunk]);
-        console.log('vector: ', vector);
+        console.log("vector: ", vector);
 
         const res = await supabase.from("document_chunks").insert({
           document_id: documentId,
           content: chunk,
           embedding: vector,
         });
-        console.log('res: ', res);  
+        console.log("res: ", res);
 
         if (res.error) console.error("❌ Chunk insert error:", res.error);
       } catch (e) {

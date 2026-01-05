@@ -6,7 +6,7 @@
  */
 
 import { NextRequest, NextResponse } from "next/server";
-import { supabase } from "@/lib/supabaseClient";
+import { getSupabaseClient } from "@/lib/supabaseClient";
 
 export const runtime = "nodejs";
 
@@ -35,6 +35,8 @@ export async function GET(
     if (!Number.isFinite(docId)) {
       return NextResponse.json({ error: "Invalid document id" }, { status: 400 });
     }
+
+    const supabase = getSupabaseClient();
 
     // 1️⃣ 查询文档主信息
     const { data: doc, error: docError } = await supabase

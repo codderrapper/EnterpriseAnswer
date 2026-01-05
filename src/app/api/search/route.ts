@@ -8,7 +8,7 @@
  */
 
 import { NextResponse } from "next/server";
-import { supabase } from "@/lib/supabaseClient";
+import { getSupabaseClient } from "@/lib/supabaseClient";
 import { embeddings } from "@/lib/embedClient";
 import { aiClient, AI_MODEL } from "@/lib/ai-client";
 
@@ -94,6 +94,7 @@ export async function POST(req: Request) {
 
         const flushRunHistory = async () => {
           try {
+            const supabase = getSupabaseClient();
             const durationMs = Date.now() - startTime;
             await supabase.from("run_history").insert({
               question,
@@ -127,6 +128,7 @@ export async function POST(req: Request) {
             "running",
             `topK=${safeTopK}, threshold=${safeThreshold}`
           );
+          const supabase = getSupabaseClient();
 
           const { data: rawMatches, error } = await supabase.rpc(
             "match_documents",

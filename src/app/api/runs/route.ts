@@ -5,7 +5,7 @@
  */
 
 import { NextRequest, NextResponse } from "next/server";
-import { supabase } from "@/lib/supabaseClient";
+import { getSupabaseClient } from "@/lib/supabaseClient";
 
 export const runtime = "nodejs";
 
@@ -29,6 +29,8 @@ export async function GET(req: NextRequest) {
 
     const from = (page - 1) * pageSize;
     const to = from + pageSize - 1;
+    
+    const supabase = getSupabaseClient();
 
     const { data, error, count } = await supabase
       .from("run_history")

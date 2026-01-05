@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { supabase } from "@/lib/supabaseClient";
+import { getSupabaseClient } from "@/lib/supabaseClient";
 import { embeddings } from "@/lib/embedClient";
 import { aiClient, AI_MODEL } from "@/lib/ai-client";
 
@@ -12,6 +12,8 @@ export async function POST(req: Request) {
 
     // 1️⃣ Embed question
     const [queryVector] = await embeddings.embedDocuments([question]);
+
+    const supabase = getSupabaseClient();
 
     // 2️⃣ Search similar chunks
     const { data: matches, error } = await supabase.rpc("match_documents", {
