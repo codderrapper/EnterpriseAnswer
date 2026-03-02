@@ -19,10 +19,19 @@ create table public.run_history (
   id bigint generated always as identity not null,
   question text not null,
   answer text null,
+  error_code text null,
+  token_usage jsonb null,
+  cost_usd numeric null,
   topk integer null,
   threshold double precision null,
   matched_count integer null,
   duration_ms integer null,
+  request_id text null,
+  ttfb_ms integer null,
+  embedding_ms integer null,
+  retrieve_ms integer null,
+  llm_ms integer null,
+  best_similarity double precision null,
   steps jsonb null,
   sources jsonb null,
   created_at timestamp with time zone null default now(),
@@ -43,4 +52,3 @@ begin
   order by dc.embedding <=> query_embedding
   limit match_count;
 end;
-

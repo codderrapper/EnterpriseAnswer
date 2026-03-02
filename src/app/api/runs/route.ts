@@ -13,11 +13,25 @@ type RunListItem = {
   id: number;
   question: string;
   answer: string | null;
+  error_code: string | null;
+  token_usage: {
+    prompt_tokens: number;
+    completion_tokens: number;
+    total_tokens: number;
+  } | null;
+  cost_usd: number | null;
   topk: number | null;
   threshold: number | null;
   matched_count: number | null;
   duration_ms: number | null;
   created_at: string;
+  // ✅ metrics
+  request_id: string | null;
+  ttfb_ms: number | null;
+  embedding_ms: number | null;
+  retrieve_ms: number | null;
+  llm_ms: number | null;
+  best_similarity: number | null;
 };
 
 export async function GET(req: NextRequest) {
@@ -29,18 +43,36 @@ export async function GET(req: NextRequest) {
 
     const from = (page - 1) * pageSize;
     const to = from + pageSize - 1;
-    
+
     const supabase = getSupabaseClient();
 
     const { data, error, count } = await supabase
       .from("run_history")
       .select(
-        "id, question, answer, topk, threshold, matched_count, duration_ms, created_at",
-        { count: "exact" }
+        `
+    id,
+    question,
+    answer,
+    error_code,
+    token_usage,
+    cost_usd,
+    topk,
+    threshold,
+    matched_count,
+    duration_ms,
+    created_at,
+
+    request_id,
+    ttfb_ms,
+    embedding_ms,
+    retrieve_ms,
+    llm_ms,
+    best_similarity
+    `,
+        { count: "exact" },
       )
       .order("created_at", { ascending: false })
       .range(from, to);
-
     if (error) {
       console.error("❌ fetch runs error:", error);
       return NextResponse.json({ error: error.message }, { status: 500 });
@@ -56,7 +88,7 @@ export async function GET(req: NextRequest) {
     console.error("❌ runs route error:", err);
     return NextResponse.json(
       { error: err?.message || "Server error" },
-      { status: 500 }
+      { status: 500 },
     );
   }
 }

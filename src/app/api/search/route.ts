@@ -63,6 +63,56 @@ export async function POST(req: Request) {
 
     const stream = new ReadableStream({
       async start(controller) {
+        // ✅ requestId：用于把一次请求的所有日志串起来（排障利器）
+        const requestId =
+          globalThis.crypto?.randomUUID?.() ?? `${Date.now()}-${Math.random()}`;
+
+        // ✅ 分段计时器
+        const t0 = Date.now();
+        let ttfbMs: number | null = null;
+        let embeddingMs: number | null = null;
+        let retrieveMs: number | null = null;
+        let llmMs: number | null = null;
+        let bestSimilarity: number | null = null;
+        let errorCode: string | null = null;
+        let tokenUsage: {
+          prompt_tokens: number;
+          completion_tokens: number;
+          total_tokens: number;
+        } | null = null;
+        let costUsd: number | null = null;
+        let usageFromProvider: {
+          prompt_tokens?: number;
+          completion_tokens?: number;
+          total_tokens?: number;
+        } | null = null;
+
+        const estimateTokens = (text: string) =>
+          Math.max(0, Math.ceil((text ?? "").length / 4));
+        const normalizeUsage = (u: any) => {
+          const prompt = Number(u?.prompt_tokens ?? 0);
+          const completion = Number(u?.completion_tokens ?? 0);
+          const total = Number.isFinite(Number(u?.total_tokens))
+            ? Number(u?.total_tokens)
+            : prompt + completion;
+          return {
+            prompt_tokens: Number.isFinite(prompt) ? prompt : 0,
+            completion_tokens: Number.isFinite(completion) ? completion : 0,
+            total_tokens: Number.isFinite(total) ? total : 0,
+          };
+        };
+
+        // ✅ 结构化日志：先用 console.log，后面可无缝接入日志平台
+        const log = (event: string, extra?: Record<string, any>) => {
+          console.log(
+            JSON.stringify({
+              requestId,
+              event,
+              at: new Date().toISOString(),
+              ...extra,
+            }),
+          );
+        };
         const startTime = Date.now();
 
         // 💾 运行历史采集：在流式过程中逐步填充这些变量
@@ -102,10 +152,20 @@ export async function POST(req: Request) {
             await supabase.from("run_history").insert({
               question,
               answer: answerForLog || null,
+              error_code: errorCode,
+              token_usage: tokenUsage,
+              cost_usd: costUsd,
               topk: safeTopK,
               threshold: safeThreshold,
               matched_count: matchedCountForLog,
               duration_ms: durationMs,
+              // ✅ 新增 metrics
+              request_id: requestId,
+              ttfb_ms: ttfbMs,
+              embedding_ms: embeddingMs,
+              retrieve_ms: retrieveMs,
+              llm_ms: llmMs,
+              best_similarity: bestSimilarity,
               steps: stepsLog,
               sources: sourcesForLog,
             });
@@ -121,11 +181,15 @@ export async function POST(req: Request) {
 
           // Step 2：生成查询向量
           sendStep("embed", "生成查询向量", "running");
-          const embeddings = getEmbeddings();
+          const e0 = Date.now();
 
+          const embeddings = getEmbeddings();
           const [queryVector] = await embeddings.embedDocuments([question]);
-          console.log("queryVector length:", queryVector.length);
-          sendStep("embed", "生成查询向量", "done");
+
+          embeddingMs = Date.now() - e0;
+          log("embedding_done", { embeddingMs, dims: queryVector?.length });
+
+          sendStep("embed", "生成查询向量", "done", `耗时 ${embeddingMs}ms`);
 
           // Step 3：检索相关文档片段（RAG）
           sendStep(
@@ -134,47 +198,100 @@ export async function POST(req: Request) {
             "running",
             `topK=${safeTopK}, threshold=${safeThreshold}`,
           );
+
+          const r0 = Date.now();
           const supabase = getSupabaseClient();
-          console.log("RPC payload", JSON.stringify(DEFAULT_WORKSPACE_ID));
+
+          // ✅ workspaceId：只保留一个来源，避免日志误导
+          // 你现在已经有 demoWorkspace 逻辑，就用它；否则就用 env DEFAULT_WORKSPACE_ID。
+          // 二选一，不要混着用。
           const workspaceId = getDemoWorkspaceIdOrThrow();
+          // const workspaceId = DEFAULT_WORKSPACE_ID; // 如果你想完全用 env，就启用这一行并删掉上面那行
+
+          log("retrieve_start", { workspaceId, safeTopK, safeThreshold });
+
+          // ✅ RPC
           const { data: rawMatches, error } = await supabase.rpc(
             "match_documents",
             {
               query_embedding: queryVector,
               match_threshold: safeThreshold,
               match_count: safeTopK,
-              p_workspace_id: workspaceId, // ✅ 新增
+              p_workspace_id: workspaceId,
             },
           );
-          console.log("rawMatches:", rawMatches);
-          console.log("workspaceId passed to rpc:", DEFAULT_WORKSPACE_ID);
-          console.log("queryVector first 5:", queryVector.slice(0, 5));
+
+          retrieveMs = Date.now() - r0;
+          log("retrieve_done", {
+            retrieveMs,
+            rawCount: Array.isArray(rawMatches) ? rawMatches.length : 0,
+          });
+
           if (error) {
             sendStep("retrieve", "检索相关文档片段", "error", error.message);
             throw error;
           }
 
-          // const matches = (rawMatches ?? []) as MatchRow[];
-          const matches = (rawMatches ?? []) as MatchRow[];
+          /**
+           * ✅ 关键：把 RPC 返回统一成“稳定的结构”
+           * - similarity/score 统一转 number
+           * - 过滤掉 NaN
+           * - 再按相似度排序，保证 best 一定正确
+           */
+          const matches = ((rawMatches ?? []) as any[])
+            .map((m) => {
+              const sim = Number(m.similarity ?? m.score ?? 0);
+              return {
+                id: Number(m.id),
+                document_id: Number(m.document_id),
+                content: String(m.content ?? ""),
+                similarity: Number.isFinite(sim) ? sim : 0,
+              } as MatchRow;
+            })
+            .filter((m) => m.content.length > 0)
+            .sort((a, b) => (b.similarity ?? 0) - (a.similarity ?? 0));
 
-          const best = matches[0]?.similarity ?? -999;
+          // ✅ bestSimilarity：给后面 metrics / UI 用
+          bestSimilarity = matches[0]?.similarity ?? null;
 
           matchedCountForLog = matches.length;
           sourcesForLog = matches;
 
-          if (!matches.length || best < safeThreshold) {
+          if (!matches.length) {
+            sendStep("retrieve", "检索相关文档片段", "done", "未命中任何片段");
+            const noAns = "文档中未提及相关信息。";
+            answerForLog = noAns;
+            tokenUsage = {
+              prompt_tokens: 0,
+              completion_tokens: 0,
+              total_tokens: 0,
+            };
+            costUsd = 0;
+            sendJSON({ type: "delta", data: noAns });
+            await flushRunHistory();
+            controller.close();
+            return;
+          }
+
+          // ✅ 如果 bestSimilarity 不是 number，就别 toFixed；先保证它是 number（上面已处理）
+          const best = bestSimilarity ?? 0;
+
+          if (best < safeThreshold) {
             sendStep(
               "retrieve",
               "检索相关文档片段",
               "done",
-              `最高相似度=${best.toFixed(3)}，低于阈值`,
+              `最高相似度=${best.toFixed(3)}，低于阈值(${safeThreshold})`,
             );
             const noAns = "文档中未提及相关信息。";
             answerForLog = noAns;
-            sendJSON({
-              type: "delta",
-              data: noAns,
-            });
+            tokenUsage = {
+              prompt_tokens: 0,
+              completion_tokens: 0,
+              total_tokens: 0,
+            };
+            costUsd = 0;
+            sendJSON({ type: "delta", data: noAns });
             await flushRunHistory();
             controller.close();
             return;
@@ -184,7 +301,7 @@ export async function POST(req: Request) {
             "retrieve",
             "检索相关文档片段",
             "done",
-            `命中 ${matches.length} 条片段`,
+            `命中 ${matches.length} 条片段，最高相似度=${best.toFixed(3)}（耗时 ${retrieveMs ?? "-"}ms）`,
           );
 
           const context = matches.map((m) => m.content).join("\n---\n");
@@ -232,9 +349,18 @@ export async function POST(req: Request) {
             role: "user" as const,
             content: `请基于以下【文档内容】回答用户当前的问题。\n\n【文档内容】\n${context}\n\n【当前问题】\n${question}`,
           };
-
+          const promptText = [
+            systemPrompt,
+            ...historyMessages.map((m) => m.content),
+            currentUserMessage.content,
+          ]
+            .filter(Boolean)
+            .join("\n");
           // Step 4：调用 LLM 生成回答
           sendStep("llm", "生成回答", "running");
+
+          // ✅ LLM 计时开始
+          const l0 = Date.now();
 
           const aiClient = getAIClient();
 
@@ -251,19 +377,52 @@ export async function POST(req: Request) {
           let currentContent = "";
 
           for await (const chunk of completion) {
+            if ((chunk as any)?.usage) {
+              usageFromProvider = (chunk as any).usage;
+              log("usage_from_provider", { usage: usageFromProvider });
+            }
             const delta = chunk.choices?.[0]?.delta?.content;
             if (delta) {
+              // ✅ 只在第一次真正输出 token 时记录（更符合用户体感）
+              if (ttfbMs == null) {
+                ttfbMs = Date.now() - t0;
+                log("first_token", { ttfbMs });
+              }
               currentContent += delta;
               answerForLog = currentContent;
               sendJSON({ type: "delta", data: delta });
             }
           }
 
-          sendStep("llm", "生成回答", "done");
+          // ✅ LLM 计时结束
+          llmMs = Date.now() - l0;
+          log("llm_done", { llmMs });
+
+          if (usageFromProvider) {
+            tokenUsage = normalizeUsage(usageFromProvider);
+          } else {
+            log("usage_missing_fallback_estimate");
+            const promptTokens = estimateTokens(promptText);
+            const completionTokens = estimateTokens(currentContent);
+            const totalTokens = promptTokens + completionTokens;
+            tokenUsage = {
+              prompt_tokens: promptTokens,
+              completion_tokens: completionTokens,
+              total_tokens: totalTokens,
+            };
+          }
+          const totalTokens = tokenUsage?.total_tokens ?? 0;
+          const rate = Number(process.env.AI_COST_PER_1K_TOKENS);
+          costUsd = Number.isFinite(rate)
+            ? Number(((totalTokens / 1000) * rate).toFixed(6))
+            : null;
+
+          sendStep("llm", "生成回答", "done", `耗时 ${llmMs}ms`);
           await flushRunHistory();
           controller.close();
         } catch (err: any) {
           console.error("❌ Search error in stream:", err);
+          errorCode = err?.code || err?.name || err?.status || "SERVER_ERROR";
           sendStep(
             "error",
             "服务端出错",

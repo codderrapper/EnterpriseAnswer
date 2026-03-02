@@ -17,6 +17,13 @@ type RunDetail = {
   id: number;
   question: string;
   answer: string | null;
+  error_code: string | null;
+  token_usage: {
+    prompt_tokens: number;
+    completion_tokens: number;
+    total_tokens: number;
+  } | null;
+  cost_usd: number | null;
   topk: number | null;
   threshold: number | null;
   matched_count: number | null;
@@ -24,9 +31,59 @@ type RunDetail = {
   steps: AgentStep[] | null;
   sources: any[] | null;
   created_at: string;
+
+  // ✅ metrics
+  request_id: string | null;
+  ttfb_ms: number | null;
+  embedding_ms: number | null;
+  retrieve_ms: number | null;
+  llm_ms: number | null;
+  best_similarity: number | null;
 };
 
 const fetcher = (url: string) => fetch(url).then((res) => res.json());
+
+function MetricsCard({ run }: { run: RunDetail | undefined }) {
+  if (!run) return null;
+
+  const item = (label: string, v: any) => (
+    <div className="rounded border bg-white p-3">
+      <div className="text-xs text-gray-500">{label}</div>
+      <div className="text-lg font-semibold">
+        {v ?? "-"}
+        {/* ✅ 不要用 label.includes("ms") 这种脆弱判断；这里先按你原逻辑保留 */}
+        {typeof v === "number" && label.includes("ms") ? "ms" : ""}
+      </div>
+    </div>
+  );
+
+  return (
+    <div className="grid grid-cols-2 md:grid-cols-3 gap-3">
+      {item("TTFB ms", run.ttfb_ms)}
+      {item("Embedding ms", run.embedding_ms)}
+      {item("Retrieve ms", run.retrieve_ms)}
+      {item("LLM ms", run.llm_ms)}
+      {item("Total ms", run.duration_ms)}
+      {item(
+        "Tokens",
+        run.token_usage
+          ? `${run.token_usage.total_tokens} (p:${run.token_usage.prompt_tokens}/c:${run.token_usage.completion_tokens})`
+          : "-",
+      )}
+      {item(
+        "Cost USD",
+        typeof run.cost_usd === "number" ? `$${run.cost_usd.toFixed(6)}` : "-",
+      )}
+      {item("Error Code", run.error_code ?? "-")}
+      {item(
+        "Best similarity",
+        typeof run.best_similarity === "number"
+          ? run.best_similarity.toFixed(3)
+          : "-",
+      )}
+    </div>
+  );
+}
 
 export default function RunDetailPage() {
   const params = useParams<{ id: string }>();
@@ -34,7 +91,7 @@ export default function RunDetailPage() {
 
   const { data, error, isLoading } = useSWR<RunDetail>(
     id ? `/api/runs/${id}` : null,
-    fetcher
+    fetcher,
   );
 
   const run = data;
@@ -48,10 +105,10 @@ export default function RunDetailPage() {
           </h1>
           {run && (
             <p className="text-xs text-gray-600 mt-1">
-              {new Date(run.created_at).toLocaleString()} ·
-              TopK: {run.topk ?? "-"} · 阈值: {run.threshold ?? "-"} ·
-              命中: {run.matched_count ?? 0} ·
-              耗时: {run.duration_ms != null ? `${run.duration_ms} ms` : "-"}
+              {new Date(run.created_at).toLocaleString()} · TopK:{" "}
+              {run.topk ?? "-"} · 阈值: {run.threshold ?? "-"} · 命中:{" "}
+              {run.matched_count ?? 0} · 耗时:{" "}
+              {run.duration_ms != null ? `${run.duration_ms} ms` : "-"}
             </p>
           )}
         </div>
@@ -65,14 +122,14 @@ export default function RunDetailPage() {
         </div>
       </header>
 
+      <section className="mt-4">
+        <MetricsCard run={run} />
+      </section>
+
       <section className="flex-1 overflow-y-auto p-4 bg-gray-50 space-y-4">
-        {isLoading && (
-          <div className="text-gray-500 text-sm">加载中...</div>
-        )}
+        {isLoading && <div className="text-gray-500 text-sm">加载中...</div>}
         {error && (
-          <div className="text-red-500 text-sm">
-            加载失败：{String(error)}
-          </div>
+          <div className="text-red-500 text-sm">加载失败：{String(error)}</div>
         )}
         {!isLoading && !error && !run && (
           <div className="text-gray-500 text-sm">未找到该记录。</div>
@@ -121,10 +178,7 @@ export default function RunDetailPage() {
                         片段 #{idx + 1}
                       </div>
                       <div className="text-[11px] text-gray-500">
-                        相似度:{" "}
-                        {s.similarity ??
-                          s.score ??
-                          "-"}
+                        相似度: {s.similarity ?? s.score ?? "-"}
                       </div>
                     </div>
                     <div className="text-[11px] text-gray-800 whitespace-pre-wrap mb-1 max-h-24 overflow-y-auto">
