@@ -51,8 +51,7 @@ export const useChatStore = create<ChatState>((set, get) => ({
 
   setThreshold: (t) =>
     set({
-      threshold:
-        Number.isFinite(t) && t >= 0 && t <= 1 ? t : 0.4,
+      threshold: Number.isFinite(t) && t >= 0 && t <= 1 ? t : 0.4,
     }),
 
   hydrateFromLocal: () => {
@@ -157,18 +156,26 @@ export const useChatStore = create<ChatState>((set, get) => ({
               return { steps: copy };
             });
           } else if (data.type === "sources") {
-            const sources: Source[] =
-              data.data?.map((m: any, idx: number) => ({
-                id: m.id ?? idx,
-                document_id: m.document_id ?? 0,
-                snippet: m.content ?? m.snippet ?? "",
-                similarity:
-                  m.similarity?.toString() ?? m.score?.toString() ?? "",
-              })) ?? [];
+            const sources: Source[] = data.data
+              ? data.data.map((m: any, idx: number) => {
+                  const simRaw =
+                    typeof m.similarity === "number"
+                      ? m.similarity
+                      : typeof m.score === "number"
+                        ? m.score
+                        : Number(m.similarity ?? m.score);
+                  return {
+                    id: m.id ?? idx,
+                    document_id: m.document_id ?? 0,
+                    snippet: m.content ?? m.snippet ?? "",
+                    similarity: Number.isFinite(simRaw) ? simRaw : null,
+                  };
+                })
+              : [];
 
             set((prev) => ({
               messages: prev.messages.map((msg) =>
-                msg.id === assistantId ? { ...msg, sources } : msg
+                msg.id === assistantId ? { ...msg, sources } : msg,
               ),
             }));
           } else if (data.type === "delta") {
@@ -181,7 +188,7 @@ export const useChatStore = create<ChatState>((set, get) => ({
               messages: prev.messages.map((msg) =>
                 msg.id === assistantId
                   ? { ...msg, content: currentContent }
-                  : msg
+                  : msg,
               ),
             }));
           } else if (data.type === "error") {
@@ -201,7 +208,7 @@ export const useChatStore = create<ChatState>((set, get) => ({
                 messages: prev.messages.map((msg) =>
                   msg.id === assistantId
                     ? { ...msg, content: finalContent }
-                    : msg
+                    : msg,
                 ),
               }));
             }

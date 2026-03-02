@@ -1,8 +1,10 @@
+const DEFAULT_WORKSPACE_ID = process.env.DEFAULT_WORKSPACE_ID;
+
 import { NextResponse } from "next/server";
 import { getSupabaseClient } from "@/lib/supabaseClient";
 import { getEmbeddings } from "@/lib/embedClient";
 import { getAIClient, AI_MODEL } from "@/lib/ai-client";
-
+import { getDemoWorkspaceIdOrThrow } from "@/lib/demoWorkspace";
 export const runtime = "nodejs";
 
 export async function POST(req: Request) {
@@ -16,12 +18,14 @@ export async function POST(req: Request) {
     const [queryVector] = await embeddings.embedDocuments([question]);
 
     const supabase = getSupabaseClient();
-
+    console.log("RPC payload", JSON.stringify(DEFAULT_WORKSPACE_ID));
+    const workspaceId = getDemoWorkspaceIdOrThrow();
     // 2️⃣ Search similar chunks
     const { data: matches, error } = await supabase.rpc("match_documents", {
       query_embedding: queryVector,
       match_threshold: 0.4,
       match_count: 5,
+      p_workspace_id: workspaceId,
     });
     if (error) throw error;
 

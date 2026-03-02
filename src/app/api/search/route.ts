@@ -7,10 +7,13 @@
  *    也为后续 A/B、效果评估打基础。
  */
 
+const DEFAULT_WORKSPACE_ID = process.env.DEFAULT_WORKSPACE_ID!;
+
 import { NextResponse } from "next/server";
 import { getSupabaseClient } from "@/lib/supabaseClient";
 import { getEmbeddings } from "@/lib/embedClient";
 import { getAIClient, AI_MODEL } from "@/lib/ai-client";
+import { getDemoWorkspaceIdOrThrow } from "@/lib/demoWorkspace";
 
 export const runtime = "nodejs";
 
@@ -85,7 +88,7 @@ export async function POST(req: Request) {
           id: string,
           title: string,
           status: StepStatus,
-          detail?: string
+          detail?: string,
         ) => {
           const step: StepLog = { id, title, status, detail };
           upsertStepLog(step);
@@ -121,6 +124,7 @@ export async function POST(req: Request) {
           const embeddings = getEmbeddings();
 
           const [queryVector] = await embeddings.embedDocuments([question]);
+          console.log("queryVector length:", queryVector.length);
           sendStep("embed", "生成查询向量", "done");
 
           // Step 3：检索相关文档片段（RAG）
@@ -128,31 +132,43 @@ export async function POST(req: Request) {
             "retrieve",
             "检索相关文档片段",
             "running",
-            `topK=${safeTopK}, threshold=${safeThreshold}`
+            `topK=${safeTopK}, threshold=${safeThreshold}`,
           );
           const supabase = getSupabaseClient();
-
+          console.log("RPC payload", JSON.stringify(DEFAULT_WORKSPACE_ID));
+          const workspaceId = getDemoWorkspaceIdOrThrow();
           const { data: rawMatches, error } = await supabase.rpc(
             "match_documents",
             {
               query_embedding: queryVector,
               match_threshold: safeThreshold,
               match_count: safeTopK,
-            }
+              p_workspace_id: workspaceId, // ✅ 新增
+            },
           );
-
+          console.log("rawMatches:", rawMatches);
+          console.log("workspaceId passed to rpc:", DEFAULT_WORKSPACE_ID);
+          console.log("queryVector first 5:", queryVector.slice(0, 5));
           if (error) {
             sendStep("retrieve", "检索相关文档片段", "error", error.message);
             throw error;
           }
 
+          // const matches = (rawMatches ?? []) as MatchRow[];
           const matches = (rawMatches ?? []) as MatchRow[];
+
+          const best = matches[0]?.similarity ?? -999;
 
           matchedCountForLog = matches.length;
           sourcesForLog = matches;
 
-          if (!matches.length) {
-            sendStep("retrieve", "检索相关文档片段", "done", "未找到相关内容");
+          if (!matches.length || best < safeThreshold) {
+            sendStep(
+              "retrieve",
+              "检索相关文档片段",
+              "done",
+              `最高相似度=${best.toFixed(3)}，低于阈值`,
+            );
             const noAns = "文档中未提及相关信息。";
             answerForLog = noAns;
             sendJSON({
@@ -168,7 +184,7 @@ export async function POST(req: Request) {
             "retrieve",
             "检索相关文档片段",
             "done",
-            `命中 ${matches.length} 条片段`
+            `命中 ${matches.length} 条片段`,
           );
 
           const context = matches.map((m) => m.content).join("\n---\n");
@@ -181,7 +197,7 @@ export async function POST(req: Request) {
             "tool",
             "调用工具：searchDocs",
             "running",
-            "基于向量检索结果进行处理"
+            "基于向量检索结果进行处理",
           );
           try {
             await new Promise((r) => setTimeout(r, 200));
@@ -189,14 +205,14 @@ export async function POST(req: Request) {
               "tool",
               "调用工具：searchDocs",
               "done",
-              `工具返回 ${matches.length} 条候选片段`
+              `工具返回 ${matches.length} 条候选片段`,
             );
           } catch (toolErr: any) {
             sendStep(
               "tool",
               "调用工具：searchDocs",
               "error",
-              toolErr?.message || "工具调用失败"
+              toolErr?.message || "工具调用失败",
             );
           }
 
@@ -252,7 +268,7 @@ export async function POST(req: Request) {
             "error",
             "服务端出错",
             "error",
-            err?.message || "Unknown error"
+            err?.message || "Unknown error",
           );
           sendJSON({
             type: "error",
@@ -273,7 +289,7 @@ export async function POST(req: Request) {
     console.error("❌ Search error (outer):", err);
     return NextResponse.json(
       { error: err?.message || "Server error" },
-      { status: 500 }
+      { status: 500 },
     );
   }
 }
