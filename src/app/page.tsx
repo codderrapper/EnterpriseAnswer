@@ -2,6 +2,7 @@
 "use client";
 
 import { useEffect, useRef, useLayoutEffect, useState } from "react";
+import Link from "next/link";
 import MarkdownRenderer from "@/components/MarkdownRenderer";
 import AgentStepsPanel from "@/components/AgentStepsPanel";
 import type { Message } from "@/types/chat";
@@ -78,13 +79,13 @@ export default function Home() {
             {msg.sources.map((s) => (
               <div key={s.id} className="truncate">
                 📄{" "}
-                <a
+                <Link
                   href={`/documents/${s.document_id}?chunk=${s.id}`}
                   className="text-blue-600 hover:underline"
                   title={s.snippet}
                 >
                   {s.snippet}
-                </a>
+                </Link>
                 <span className="text-gray-500">（相似度 {s.similarity}）</span>
               </div>
             ))}
@@ -124,15 +125,18 @@ export default function Home() {
                 🧭 执行过程 {showSteps ? "▲" : "▼"}
               </button>
 
-              <a
-                href="/documents"
-                className="text-sm text-blue-600 hover:underline"
-              >
+              <Link href="/documents" className="text-sm text-blue-600 hover:underline">
                 文档管理 →
-              </a>
-              <a href="/runs" className="text-sm text-blue-600 hover:underline">
+              </Link>
+              <Link href="/runs" className="text-sm text-blue-600 hover:underline">
                 运行历史 →
-              </a>
+              </Link>
+              <Link href="/experiments" className="text-sm text-blue-600 hover:underline">
+                实验面板 →
+              </Link>
+              <Link href="/prompts" className="text-sm text-blue-600 hover:underline">
+                Prompt 管理 →
+              </Link>
             </div>
           </header>
           {/* RAG 检索配置面板 */}

@@ -1,17 +1,9 @@
 import { NextResponse } from "next/server";
 import { getSupabaseClient } from "@/lib/supabaseClient";
 import { getEmbeddings } from "@/lib/embedClient";
+import { splitText } from "@/lib/textChunker";
 
 export const runtime = "nodejs";
-
-// 🔹 Helper function to split long text into overlapping chunks
-function splitText(text: string, chunkSize = 500, overlap = 50) {
-  const chunks: string[] = [];
-  for (let i = 0; i < text.length; i += chunkSize - overlap) {
-    chunks.push(text.slice(i, i + chunkSize));
-  }
-  return chunks;
-}
 
 export async function POST(req: Request) {
   try {

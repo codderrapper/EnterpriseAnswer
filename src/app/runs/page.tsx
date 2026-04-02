@@ -151,6 +151,12 @@ export default function RunsPage() {
           <a href="/" className="text-blue-600 hover:underline">
             聊天工作台
           </a>
+          <a href="/experiments" className="text-blue-600 hover:underline">
+            实验面板
+          </a>
+          <a href="/prompts" className="text-blue-600 hover:underline">
+            Prompt 管理
+          </a>
           <a href="/documents" className="text-blue-600 hover:underline">
             文档管理
           </a>

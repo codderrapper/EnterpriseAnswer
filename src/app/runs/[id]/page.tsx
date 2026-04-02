@@ -9,6 +9,7 @@
 
 import useSWR from "swr";
 import { useParams } from "next/navigation";
+import { useEffect, useState } from "react";
 import AgentStepsPanel from "@/components/AgentStepsPanel";
 import MarkdownRenderer from "@/components/MarkdownRenderer";
 import type { AgentStep } from "@/types/agent";
@@ -39,6 +40,15 @@ type RunDetail = {
   retrieve_ms: number | null;
   llm_ms: number | null;
   best_similarity: number | null;
+};
+
+type FeedbackItem = {
+  id: number;
+  run_id: number;
+  vote: "up" | "down";
+  is_hallucination: boolean;
+  note: string | null;
+  created_at: string;
 };
 
 const fetcher = (url: string) => fetch(url).then((res) => res.json());
@@ -85,6 +95,95 @@ function MetricsCard({ run }: { run: RunDetail | undefined }) {
   );
 }
 
+function FeedbackCard({ runId }: { runId: number }) {
+  const { data, mutate } = useSWR<{ item: FeedbackItem | null }>(
+    `/api/feedback?runId=${runId}`,
+    fetcher,
+  );
+  const [vote, setVote] = useState<"up" | "down">("up");
+  const [isHallucination, setIsHallucination] = useState(false);
+  const [note, setNote] = useState("");
+  const [saving, setSaving] = useState(false);
+
+  useEffect(() => {
+    if (!data?.item) return;
+    setVote(data.item.vote);
+    setIsHallucination(Boolean(data.item.is_hallucination));
+    setNote(data.item.note ?? "");
+  }, [data]);
+
+  async function submit() {
+    setSaving(true);
+    try {
+      const res = await fetch("/api/feedback", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          runId,
+          vote,
+          isHallucination,
+          note,
+        }),
+      });
+      const body = await res.json();
+      if (!res.ok) throw new Error(body?.error || "提交失败");
+      await mutate();
+    } catch (err) {
+      alert(String((err as Error)?.message || err));
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  return (
+    <div className="bg-white border rounded p-3 space-y-2">
+      <div className="flex items-center justify-between">
+        <div className="text-sm font-medium">质量反馈</div>
+        {data?.item ? (
+          <div className="text-xs text-gray-500">
+            最近反馈：{new Date(data.item.created_at).toLocaleString()}
+          </div>
+        ) : null}
+      </div>
+      <div className="flex items-center gap-2 text-sm">
+        <button
+          className={`px-2 py-1 rounded border ${vote === "up" ? "bg-green-50 border-green-300 text-green-700" : "bg-white"}`}
+          onClick={() => setVote("up")}
+        >
+          👍
+        </button>
+        <button
+          className={`px-2 py-1 rounded border ${vote === "down" ? "bg-red-50 border-red-300 text-red-700" : "bg-white"}`}
+          onClick={() => setVote("down")}
+        >
+          👎
+        </button>
+        <label className="flex items-center gap-2 ml-2 text-xs text-gray-700">
+          <input
+            type="checkbox"
+            checked={isHallucination}
+            onChange={(e) => setIsHallucination(e.target.checked)}
+          />
+          标记 hallucination
+        </label>
+      </div>
+      <textarea
+        value={note}
+        onChange={(e) => setNote(e.target.value)}
+        className="w-full h-20 border rounded p-2 text-sm"
+        placeholder="可选：补充反馈说明"
+      />
+      <button
+        disabled={saving}
+        onClick={submit}
+        className="px-3 py-1.5 rounded bg-blue-600 text-white hover:bg-blue-700 disabled:bg-gray-400 text-sm"
+      >
+        {saving ? "提交中..." : "提交反馈"}
+      </button>
+    </div>
+  );
+}
+
 export default function RunDetailPage() {
   const params = useParams<{ id: string }>();
   const id = params.id;
@@ -119,6 +218,9 @@ export default function RunDetailPage() {
           <a href="/" className="text-blue-600 hover:underline">
             聊天工作台
           </a>
+          <a href="/experiments" className="text-blue-600 hover:underline">
+            实验面板
+          </a>
         </div>
       </header>
 
@@ -137,6 +239,8 @@ export default function RunDetailPage() {
 
         {run && (
           <>
+            <FeedbackCard runId={run.id} />
+
             {/* 问题 & 回答 */}
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
               <div className="bg-white border rounded p-3">

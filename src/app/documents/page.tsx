@@ -10,6 +10,7 @@
 
 import useSWR from "swr";
 import { useState } from "react";
+import Link from "next/link";
 import UploadBox from "@/components/UploadBox";
 
 type DocumentListItem = {
@@ -42,9 +43,9 @@ export default function DocumentsPage() {
       {/* 顶部标题 & 返回入口 */}
       <header className="p-4 border-b bg-white flex items-center justify-between">
         <h1 className="font-bold text-xl">文档管理</h1>
-        <a href="/" className="text-sm text-blue-600 hover:underline">
+        <Link href="/" className="text-sm text-blue-600 hover:underline">
           ← 返回聊天
-        </a>
+        </Link>
       </header>
 
       {/* 搜索 + 上传区域 */}

@@ -1,19 +1,19 @@
-/**
- * ⭐ 面试亮点（/api/search + RunHistory）：
- * 1. 使用 JSONL 流式协议（step / sources / delta / error）返回 Agent 执行过程，前端可做可视化 Trace。
- * 2. 在流式回答结束后，将当前请求的 question / answer / RAG 参数（topK, threshold）/
- *    命中片段 / steps 全量写入 run_history 表，实现“运行历史 & 调试回放”能力。
- * 3. match_documents 的参数完全由前端透传（topK / threshold），体现对 RAG 调优的理解，
- *    也为后续 A/B、效果评估打基础。
- */
-
-const DEFAULT_WORKSPACE_ID = process.env.DEFAULT_WORKSPACE_ID!;
-
 import { NextResponse } from "next/server";
 import { getSupabaseClient } from "@/lib/supabaseClient";
 import { getEmbeddings } from "@/lib/embedClient";
 import { getAIClient, AI_MODEL } from "@/lib/ai-client";
 import { getDemoWorkspaceIdOrThrow } from "@/lib/demoWorkspace";
+import {
+  buildSearchCacheKey,
+  enforceSearchRateLimit,
+  getCachedSearchAnswer,
+  setCachedSearchAnswer,
+} from "@/lib/runtimeGuards";
+import {
+  DEFAULT_SYSTEM_PROMPT,
+  getActivePromptTemplate,
+  getPromptTemplateByVersion,
+} from "@/lib/promptTemplate";
 
 export const runtime = "nodejs";
 
@@ -41,15 +41,37 @@ type StepLog = {
 
 export async function POST(req: Request) {
   try {
-    const { question, history, topK, threshold } = (await req.json()) as {
+    const {
+      question,
+      history,
+      topK,
+      threshold,
+      model,
+      promptVersion,
+      rewrite,
+      rerank,
+    } = (await req.json()) as {
       question?: string;
       history?: HistoryItem[];
       topK?: number;
       threshold?: number;
+      model?: string;
+      promptVersion?: number;
+      rewrite?: boolean;
+      rerank?: boolean;
     };
 
-    if (!question) {
+    if (!question?.trim()) {
       return NextResponse.json({ error: "Missing question" }, { status: 400 });
+    }
+
+    const workspaceId = getDemoWorkspaceIdOrThrow();
+    const limit = enforceSearchRateLimit(workspaceId);
+    if (!limit.ok) {
+      return NextResponse.json(
+        { error: limit.message, errorCode: limit.errorCode },
+        { status: 429 },
+      );
     }
 
     const safeTopK =
@@ -58,16 +80,64 @@ export async function POST(req: Request) {
       typeof threshold === "number" && threshold >= 0 && threshold <= 1
         ? threshold
         : 0.4;
+    const safeModel = typeof model === "string" && model.trim() ? model.trim() : AI_MODEL;
+    const safePromptVersion =
+      typeof promptVersion === "number" && Number.isFinite(promptVersion)
+        ? Math.floor(promptVersion)
+        : null;
+    const useRewrite = Boolean(rewrite);
+    const useRerank = Boolean(rerank);
+
+    const cacheKey = buildSearchCacheKey({
+      workspaceId,
+      question,
+      topK: safeTopK,
+      threshold: safeThreshold,
+      model: safeModel,
+      promptVersion: safePromptVersion,
+      rewrite: useRewrite,
+      rerank: useRerank,
+    });
+
+    const cached = getCachedSearchAnswer(cacheKey);
+    if (cached) {
+      const encoder = new TextEncoder();
+      const cachedStream = new ReadableStream({
+        start(controller) {
+          const sendJSON = (obj: unknown) => {
+            controller.enqueue(encoder.encode(JSON.stringify(obj) + "\n"));
+          };
+
+          sendJSON({
+            type: "step",
+            data: {
+              id: "cache",
+              title: "缓存命中",
+              status: "done",
+              detail: "1 分钟内相同问题直接返回",
+            },
+          });
+          sendJSON({ type: "sources", data: cached.sources });
+          sendJSON({ type: "delta", data: cached.answer });
+          controller.close();
+        },
+      });
+
+      return new Response(cachedStream, {
+        headers: {
+          "Content-Type": "text/plain; charset=utf-8",
+          "X-Cache": "HIT",
+        },
+      });
+    }
 
     const encoder = new TextEncoder();
 
     const stream = new ReadableStream({
       async start(controller) {
-        // ✅ requestId：用于把一次请求的所有日志串起来（排障利器）
         const requestId =
           globalThis.crypto?.randomUUID?.() ?? `${Date.now()}-${Math.random()}`;
 
-        // ✅ 分段计时器
         const t0 = Date.now();
         let ttfbMs: number | null = null;
         let embeddingMs: number | null = null;
@@ -87,8 +157,7 @@ export async function POST(req: Request) {
           total_tokens?: number;
         } | null = null;
 
-        const estimateTokens = (text: string) =>
-          Math.max(0, Math.ceil((text ?? "").length / 4));
+        const estimateTokens = (text: string) => Math.max(0, Math.ceil((text ?? "").length / 4));
         const normalizeUsage = (u: any) => {
           const prompt = Number(u?.prompt_tokens ?? 0);
           const completion = Number(u?.completion_tokens ?? 0);
@@ -102,7 +171,6 @@ export async function POST(req: Request) {
           };
         };
 
-        // ✅ 结构化日志：先用 console.log，后面可无缝接入日志平台
         const log = (event: string, extra?: Record<string, any>) => {
           console.log(
             JSON.stringify({
@@ -115,7 +183,6 @@ export async function POST(req: Request) {
         };
         const startTime = Date.now();
 
-        // 💾 运行历史采集：在流式过程中逐步填充这些变量
         const stepsLog: StepLog[] = [];
         let sourcesForLog: MatchRow[] = [];
         let matchedCountForLog = 0;
@@ -159,7 +226,6 @@ export async function POST(req: Request) {
               threshold: safeThreshold,
               matched_count: matchedCountForLog,
               duration_ms: durationMs,
-              // ✅ 新增 metrics
               request_id: requestId,
               ttfb_ms: ttfbMs,
               embedding_ms: embeddingMs,
@@ -170,28 +236,30 @@ export async function POST(req: Request) {
               sources: sourcesForLog,
             });
           } catch (e) {
-            // ⚠️ 写 run_history 失败不能影响用户体验，所以只打日志不抛错
             console.error("❌ insert run_history error:", e);
           }
         };
 
         try {
-          // Step 1：收到问题
           sendStep("received", "收到问题", "done", question);
 
-          // Step 2：生成查询向量
           sendStep("embed", "生成查询向量", "running");
           const e0 = Date.now();
 
-          const embeddings = getEmbeddings();
-          const [queryVector] = await embeddings.embedDocuments([question]);
+          let queryVector: number[];
+          try {
+            const embeddings = getEmbeddings();
+            const [vector] = await embeddings.embedDocuments([question]);
+            queryVector = vector;
+            embeddingMs = Date.now() - e0;
+            log("embedding_done", { embeddingMs, dims: queryVector?.length });
+            sendStep("embed", "生成查询向量", "done", `耗时 ${embeddingMs}ms`);
+          } catch (err: any) {
+            errorCode = "EMBEDDING_ERROR";
+            sendStep("embed", "生成查询向量", "error", err?.message || "embedding failed");
+            throw err;
+          }
 
-          embeddingMs = Date.now() - e0;
-          log("embedding_done", { embeddingMs, dims: queryVector?.length });
-
-          sendStep("embed", "生成查询向量", "done", `耗时 ${embeddingMs}ms`);
-
-          // Step 3：检索相关文档片段（RAG）
           sendStep(
             "retrieve",
             "检索相关文档片段",
@@ -200,45 +268,28 @@ export async function POST(req: Request) {
           );
 
           const r0 = Date.now();
-          const supabase = getSupabaseClient();
-
-          // ✅ workspaceId：只保留一个来源，避免日志误导
-          // 你现在已经有 demoWorkspace 逻辑，就用它；否则就用 env DEFAULT_WORKSPACE_ID。
-          // 二选一，不要混着用。
-          const workspaceId = getDemoWorkspaceIdOrThrow();
-          // const workspaceId = DEFAULT_WORKSPACE_ID; // 如果你想完全用 env，就启用这一行并删掉上面那行
-
-          log("retrieve_start", { workspaceId, safeTopK, safeThreshold });
-
-          // ✅ RPC
-          const { data: rawMatches, error } = await supabase.rpc(
-            "match_documents",
-            {
+          let rawMatches: any[] | null = null;
+          try {
+            const supabase = getSupabaseClient();
+            log("retrieve_start", { workspaceId, safeTopK, safeThreshold });
+            const { data, error } = await supabase.rpc("match_documents", {
               query_embedding: queryVector,
               match_threshold: safeThreshold,
               match_count: safeTopK,
               p_workspace_id: workspaceId,
-            },
-          );
+            });
 
-          retrieveMs = Date.now() - r0;
-          log("retrieve_done", {
-            retrieveMs,
-            rawCount: Array.isArray(rawMatches) ? rawMatches.length : 0,
-          });
-
-          if (error) {
-            sendStep("retrieve", "检索相关文档片段", "error", error.message);
-            throw error;
+            if (error) throw error;
+            rawMatches = (data ?? []) as any[];
+            retrieveMs = Date.now() - r0;
+            log("retrieve_done", { retrieveMs, rawCount: rawMatches.length });
+          } catch (err: any) {
+            errorCode = "RETRIEVE_ERROR";
+            sendStep("retrieve", "检索相关文档片段", "error", err?.message || "retrieve failed");
+            throw err;
           }
 
-          /**
-           * ✅ 关键：把 RPC 返回统一成“稳定的结构”
-           * - similarity/score 统一转 number
-           * - 过滤掉 NaN
-           * - 再按相似度排序，保证 best 一定正确
-           */
-          const matches = ((rawMatches ?? []) as any[])
+          let matches = (rawMatches ?? [])
             .map((m) => {
               const sim = Number(m.similarity ?? m.score ?? 0);
               return {
@@ -251,9 +302,7 @@ export async function POST(req: Request) {
             .filter((m) => m.content.length > 0)
             .sort((a, b) => (b.similarity ?? 0) - (a.similarity ?? 0));
 
-          // ✅ bestSimilarity：给后面 metrics / UI 用
           bestSimilarity = matches[0]?.similarity ?? null;
-
           matchedCountForLog = matches.length;
           sourcesForLog = matches;
 
@@ -273,9 +322,18 @@ export async function POST(req: Request) {
             return;
           }
 
-          // ✅ 如果 bestSimilarity 不是 number，就别 toFixed；先保证它是 number（上面已处理）
-          const best = bestSimilarity ?? 0;
+          if (useRewrite) {
+            sendStep("rewrite", "查询改写", "running", "启用 rewrite=true");
+            sendStep("rewrite", "查询改写", "done", "当前版本仅记录参数，保留原始问题");
+          }
 
+          if (useRerank) {
+            sendStep("rerank", "结果重排", "running", "启用 rerank=true");
+            matches = [...matches].sort((a, b) => (b.similarity ?? 0) - (a.similarity ?? 0));
+            sendStep("rerank", "结果重排", "done", "按相似度进行重排");
+          }
+
+          const best = bestSimilarity ?? 0;
           if (best < safeThreshold) {
             sendStep(
               "retrieve",
@@ -305,43 +363,46 @@ export async function POST(req: Request) {
           );
 
           const context = matches.map((m) => m.content).join("\n---\n");
-
-          // 把来源先发给前端
           sendJSON({ type: "sources", data: matches });
 
-          // Step 3.5：模拟工具调用
-          sendStep(
-            "tool",
-            "调用工具：searchDocs",
-            "running",
-            "基于向量检索结果进行处理",
-          );
-          try {
-            await new Promise((r) => setTimeout(r, 200));
-            sendStep(
-              "tool",
-              "调用工具：searchDocs",
-              "done",
-              `工具返回 ${matches.length} 条候选片段`,
-            );
-          } catch (toolErr: any) {
-            sendStep(
-              "tool",
-              "调用工具：searchDocs",
-              "error",
-              toolErr?.message || "工具调用失败",
-            );
-          }
+          sendStep("tool", "调用工具：searchDocs", "running", "基于向量检索结果进行处理");
+          await new Promise((r) => setTimeout(r, 120));
+          sendStep("tool", "调用工具：searchDocs", "done", `工具返回 ${matches.length} 条候选片段`);
 
-          const systemPrompt = `
-你是一名企业知识问答助手，请根据提供的企业内部文档内容，用简洁、正式的中文回答问题。
-如果文档中找不到答案，请直接回复：“文档中未提及相关信息。”，不要编造。
-`;
+          let systemPrompt = DEFAULT_SYSTEM_PROMPT;
+          let promptVersionUsed: number | null = null;
+
+          sendStep("prompt", "加载 Prompt 模板", "running");
+          try {
+            const template = safePromptVersion
+              ? await getPromptTemplateByVersion(safePromptVersion)
+              : await getActivePromptTemplate("search_system");
+
+            if (template?.content?.trim()) {
+              systemPrompt = template.content.trim();
+              promptVersionUsed = template.version;
+              sendStep(
+                "prompt",
+                "加载 Prompt 模板",
+                "done",
+                `version=${template.version}${template.is_active ? "(active)" : ""}`,
+              );
+            } else {
+              sendStep("prompt", "加载 Prompt 模板", "done", "未找到模板，使用默认 Prompt");
+            }
+          } catch (err: any) {
+            sendStep(
+              "prompt",
+              "加载 Prompt 模板",
+              "error",
+              err?.message || "读取模板失败，回退默认 Prompt",
+            );
+            log("prompt_template_error", { message: err?.message });
+          }
 
           const historyMessages =
             history?.map((m) => ({
-              role:
-                m.role === "user" ? ("user" as const) : ("assistant" as const),
+              role: m.role === "user" ? ("user" as const) : ("assistant" as const),
               content: m.content,
             })) ?? [];
 
@@ -349,6 +410,7 @@ export async function POST(req: Request) {
             role: "user" as const,
             content: `请基于以下【文档内容】回答用户当前的问题。\n\n【文档内容】\n${context}\n\n【当前问题】\n${question}`,
           };
+
           const promptText = [
             systemPrompt,
             ...historyMessages.map((m) => m.content),
@@ -356,45 +418,46 @@ export async function POST(req: Request) {
           ]
             .filter(Boolean)
             .join("\n");
-          // Step 4：调用 LLM 生成回答
-          sendStep("llm", "生成回答", "running");
 
-          // ✅ LLM 计时开始
+          sendStep("llm", "生成回答", "running", `model=${safeModel}`);
           const l0 = Date.now();
 
-          const aiClient = getAIClient();
-
-          const completion = await aiClient.chat.completions.create({
-            model: AI_MODEL,
-            stream: true,
-            messages: [
-              { role: "system", content: systemPrompt },
-              ...historyMessages,
-              currentUserMessage,
-            ],
-          });
-
           let currentContent = "";
+          try {
+            const aiClient = getAIClient();
+            const completion = await aiClient.chat.completions.create({
+              model: safeModel,
+              stream: true,
+              messages: [
+                { role: "system", content: systemPrompt },
+                ...historyMessages,
+                currentUserMessage,
+              ],
+            });
 
-          for await (const chunk of completion) {
-            if ((chunk as any)?.usage) {
-              usageFromProvider = (chunk as any).usage;
-              log("usage_from_provider", { usage: usageFromProvider });
-            }
-            const delta = chunk.choices?.[0]?.delta?.content;
-            if (delta) {
-              // ✅ 只在第一次真正输出 token 时记录（更符合用户体感）
-              if (ttfbMs == null) {
-                ttfbMs = Date.now() - t0;
-                log("first_token", { ttfbMs });
+            for await (const chunk of completion) {
+              if ((chunk as any)?.usage) {
+                usageFromProvider = (chunk as any).usage;
+                log("usage_from_provider", { usage: usageFromProvider });
               }
-              currentContent += delta;
-              answerForLog = currentContent;
-              sendJSON({ type: "delta", data: delta });
+
+              const delta = chunk.choices?.[0]?.delta?.content;
+              if (delta) {
+                if (ttfbMs == null) {
+                  ttfbMs = Date.now() - t0;
+                  log("first_token", { ttfbMs });
+                }
+                currentContent += delta;
+                answerForLog = currentContent;
+                sendJSON({ type: "delta", data: delta });
+              }
             }
+          } catch (err: any) {
+            errorCode = "LLM_ERROR";
+            sendStep("llm", "生成回答", "error", err?.message || "llm failed");
+            throw err;
           }
 
-          // ✅ LLM 计时结束
           llmMs = Date.now() - l0;
           log("llm_done", { llmMs });
 
@@ -411,27 +474,40 @@ export async function POST(req: Request) {
               total_tokens: totalTokens,
             };
           }
+
           const totalTokens = tokenUsage?.total_tokens ?? 0;
           const rate = Number(process.env.AI_COST_PER_1K_TOKENS);
           costUsd = Number.isFinite(rate)
             ? Number(((totalTokens / 1000) * rate).toFixed(6))
             : null;
 
-          sendStep("llm", "生成回答", "done", `耗时 ${llmMs}ms`);
+          sendStep(
+            "llm",
+            "生成回答",
+            "done",
+            `耗时 ${llmMs}ms · promptVersion=${promptVersionUsed ?? "default"}`,
+          );
+
+          if (currentContent.trim()) {
+            setCachedSearchAnswer(cacheKey, {
+              answer: currentContent,
+              sources: matches,
+              model: safeModel,
+              promptVersion: promptVersionUsed,
+            });
+          }
+
           await flushRunHistory();
           controller.close();
         } catch (err: any) {
           console.error("❌ Search error in stream:", err);
-          errorCode = err?.code || err?.name || err?.status || "SERVER_ERROR";
-          sendStep(
-            "error",
-            "服务端出错",
-            "error",
-            err?.message || "Unknown error",
-          );
+          if (!errorCode) errorCode = "SERVER_ERROR";
+
+          sendStep("error", "服务端出错", "error", err?.message || "Unknown error");
           sendJSON({
             type: "error",
             data: err?.message || "Server error",
+            code: errorCode,
           });
           await flushRunHistory();
           controller.close();
@@ -447,7 +523,7 @@ export async function POST(req: Request) {
   } catch (err: any) {
     console.error("❌ Search error (outer):", err);
     return NextResponse.json(
-      { error: err?.message || "Server error" },
+      { error: err?.message || "Server error", errorCode: "SERVER_ERROR" },
       { status: 500 },
     );
   }
