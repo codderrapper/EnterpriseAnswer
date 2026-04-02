@@ -14,6 +14,8 @@ import {
   getActivePromptTemplate,
   getPromptTemplateByVersion,
 } from "@/lib/promptTemplate";
+import { rewriteQuery } from "@/lib/queryRewrite";
+import { rerankChunks } from "@/lib/reranker";
 
 export const runtime = "nodejs";
 
@@ -243,13 +245,34 @@ export async function POST(req: Request) {
         try {
           sendStep("received", "收到问题", "done", question);
 
+          // ── Query Rewrite：用 LLM 改写问题，提升检索召回率 ──
+          let searchQuery = question; // 检索用的查询（可能被改写）
+          if (useRewrite) {
+            sendStep("rewrite", "查询改写", "running", "用 LLM 改写问题以提升检索质量");
+            try {
+              const rw0 = Date.now();
+              const { rewritten } = await rewriteQuery(question, safeModel);
+              const rwMs = Date.now() - rw0;
+              searchQuery = rewritten;
+              log("rewrite_done", { rwMs, original: question, rewritten });
+              sendStep("rewrite", "查询改写", "done",
+                `耗时 ${rwMs}ms · 改写为：${rewritten.slice(0, 80)}`);
+            } catch (err) {
+              const msg = err instanceof Error ? err.message : "rewrite failed";
+              log("rewrite_error", { message: msg });
+              sendStep("rewrite", "查询改写", "error", `${msg}，使用原始问题`);
+              // 降级：继续使用原始问题
+            }
+          }
+
           sendStep("embed", "生成查询向量", "running");
           const e0 = Date.now();
 
           let queryVector: number[];
           try {
             const embeddings = getEmbeddings();
-            const [vector] = await embeddings.embedDocuments([question]);
+            // 用 searchQuery 做 embedding（如果开启了 rewrite，这里用的是改写后的查询）
+            const [vector] = await embeddings.embedDocuments([searchQuery]);
             queryVector = vector;
             embeddingMs = Date.now() - e0;
             log("embedding_done", { embeddingMs, dims: queryVector?.length });
@@ -322,15 +345,25 @@ export async function POST(req: Request) {
             return;
           }
 
-          if (useRewrite) {
-            sendStep("rewrite", "查询改写", "running", "启用 rewrite=true");
-            sendStep("rewrite", "查询改写", "done", "当前版本仅记录参数，保留原始问题");
-          }
-
+          // ── Rerank：用 LLM 对检索结果重新打分排序 ──
           if (useRerank) {
-            sendStep("rerank", "结果重排", "running", "启用 rerank=true");
-            matches = [...matches].sort((a, b) => (b.similarity ?? 0) - (a.similarity ?? 0));
-            sendStep("rerank", "结果重排", "done", "按相似度进行重排");
+            sendStep("rerank", "结果重排", "running", "用 LLM 对候选片段重新评分");
+            try {
+              const rr0 = Date.now();
+              const reranked = await rerankChunks(question, matches, safeModel);
+              const rrMs = Date.now() - rr0;
+              matches = reranked;
+              // 重排后更新最高分
+              bestSimilarity = matches[0]?.similarity ?? bestSimilarity;
+              log("rerank_done", { rrMs, count: matches.length });
+              sendStep("rerank", "结果重排", "done",
+                `耗时 ${rrMs}ms · 重排 ${matches.length} 个片段`);
+            } catch (err) {
+              const msg = err instanceof Error ? err.message : "rerank failed";
+              log("rerank_error", { message: msg });
+              sendStep("rerank", "结果重排", "error", `${msg}，保留原始排序`);
+              // 降级：保留向量检索的原始排序
+            }
           }
 
           const best = bestSimilarity ?? 0;
@@ -364,10 +397,6 @@ export async function POST(req: Request) {
 
           const context = matches.map((m) => m.content).join("\n---\n");
           sendJSON({ type: "sources", data: matches });
-
-          sendStep("tool", "调用工具：searchDocs", "running", "基于向量检索结果进行处理");
-          await new Promise((r) => setTimeout(r, 120));
-          sendStep("tool", "调用工具：searchDocs", "done", `工具返回 ${matches.length} 条候选片段`);
 
           let systemPrompt = DEFAULT_SYSTEM_PROMPT;
           let promptVersionUsed: number | null = null;

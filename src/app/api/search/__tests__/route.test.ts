@@ -25,6 +25,12 @@ vi.mock("@/lib/runtimeGuards", () => ({
   getCachedSearchAnswer: vi.fn(() => null),
   setCachedSearchAnswer: vi.fn(),
 }));
+vi.mock("@/lib/queryRewrite", () => ({
+  rewriteQuery: vi.fn(async (q: string) => ({ rewritten: q, original: q })),
+}));
+vi.mock("@/lib/reranker", () => ({
+  rerankChunks: vi.fn(async (_q: string, chunks: unknown[]) => chunks),
+}));
 
 import { POST } from "../route";
 import { getSupabaseClient } from "@/lib/supabaseClient";
@@ -77,12 +83,12 @@ function setupMocks(options?: {
   vi.mocked(getSupabaseClient).mockReturnValue({
     rpc: vi.fn().mockResolvedValue({ data: matches, error: null }),
     from: vi.fn().mockReturnValue({ insert: mockInsert }),
-  } as ReturnType<typeof getSupabaseClient>);
+  } as unknown as ReturnType<typeof getSupabaseClient>);
 
   // Embeddings mock
   vi.mocked(getEmbeddings).mockReturnValue({
     embedDocuments: vi.fn().mockResolvedValue([[0.1, 0.2, 0.3]]),
-  } as ReturnType<typeof getEmbeddings>);
+  } as unknown as ReturnType<typeof getEmbeddings>);
 
   // AI client mock
   vi.mocked(getAIClient).mockReturnValue({
