@@ -52,3 +52,32 @@ begin
   order by dc.embedding <=> query_embedding
   limit match_count;
 end;
+
+
+
+-- Prompt 版本管理
+create table if not exists public.prompt_templates (
+  id bigint generated always as identity primary key,
+  name text not null,
+  version integer not null,
+  content text not null,
+  is_active boolean not null default false,
+  created_at timestamp with time zone not null default now(),
+  unique (name, version)
+);
+
+create index if not exists idx_prompt_templates_name_active
+  on public.prompt_templates (name, is_active, version desc);
+
+-- 回答质量反馈
+create table if not exists public.answer_feedback (
+  id bigint generated always as identity primary key,
+  run_id bigint not null references public.run_history (id) on delete cascade,
+  vote text not null check (vote in ('up', 'down')),
+  is_hallucination boolean not null default false,
+  note text null,
+  created_at timestamp with time zone not null default now()
+);
+
+create index if not exists idx_answer_feedback_run_id
+  on public.answer_feedback (run_id, created_at desc);

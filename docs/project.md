@@ -5,9 +5,9 @@
 这是一个基于 Next.js 15.5.7 的企业文档智能助手项目，采用 RAG (检索增强生成) 技术，为企业提供智能文档问答、文档管理和运行历史追踪功能。项目具有完整的流式响应系统，能够实时展示 AI 思考过程，提供良好的用户体验。
 
 ### 核心功能
-- 智能文档问答系统
+- 智能文档问答系统 (RAG)
 - 文档管理与上传
-- 运行历史追踪
+- 运行历史追踪与调试
 - 流式响应与实时可视化
 - RAG 参数可配置
 
@@ -44,16 +44,24 @@
 │   ├── components/          # React 组件
 │   │   ├── AgentStepsPanel.tsx  # Agent 执行步骤面板
 │   │   ├── MarkdownRenderer.tsx # Markdown 渲染器
+│   │   ├── SourcesPanel.tsx     # 文档来源面板
 │   │   └── UploadBox.tsx    # 文件上传组件
 │   ├── lib/                 # 工具库
 │   │   ├── ai-client.ts     # AI 客户端
+│   │   ├── demoWorkspace.ts # 示例工作区数据
 │   │   ├── embedClient.ts   # 向量嵌入客户端
-│   │   └── supabaseClient.ts # Supabase 客户端
+│   │   ├── supabaseClient.ts # Supabase 客户端
+│   │   └── supabaseServer.ts # 服务器端 Supabase 客户端
 │   ├── store/               # 状态管理
 │   │   └── chatStore.ts     # 聊天状态管理
 │   └── types/               # TypeScript 类型定义
 │       ├── agent.ts         # Agent 相关类型
 │       └── chat.ts          # 聊天相关类型
+├── docs/                    # 项目文档
+│   ├── project.md           # 项目分析文档
+│   ├── supabase.md          # Supabase 配置文档
+│   └── vercelAndNginx.md    # 部署配置文档
+├── public/                  # 静态资源
 ├── package.json             # 项目配置与依赖
 ├── next.config.ts           # Next.js 配置
 └── tsconfig.json            # TypeScript 配置
@@ -158,7 +166,7 @@ while (!done) {
 }
 ```
 
-### 5.2 智能文档问答
+### 5.2 智能文档问答 (RAG)
 
 **核心流程**：
 1. 用户输入问题
@@ -171,6 +179,32 @@ while (!done) {
 - 可配置的检索参数 (topK, threshold)
 - 文档片段相似度排序
 - 多轮对话历史支持
+
+**关键代码**：
+```typescript
+// 生成查询向量
+const embedding = await embedClient.embedQuery(question);
+
+// 检索相关文档
+const { data: matches } = await supabase.rpc("match_documents", {
+  query_embedding: embedding,
+  match_threshold: threshold,
+  match_count: topK
+});
+
+// 构建上下文
+const context = matches.map((m) => m.content).join("\n---\n");
+
+// 构建消息
+const messages = [
+  { role: "system", content: systemPrompt },
+  ...historyMessages,
+  {
+    role: "user" as const,
+    content: `请基于以下【文档内容】回答用户当前的问题。\n\n【文档内容】\n${context}\n\n【当前问题】\n${question}`
+  }
+];
+```
 
 ### 5.3 文档管理系统
 
@@ -208,6 +242,26 @@ while (!done) {
   sources: MatchRow[],
   created_at: timestamp
 }
+```
+
+**关键代码**：
+```typescript
+// 保存运行历史
+await supabase.from("run_history").insert({
+  question,
+  answer: answerForLog || null,
+  topk: topK,
+  threshold,
+  matched_count: matches.length,
+  duration_ms: Date.now() - startTime,
+  request_id: requestId,
+  ttfb_ms: ttfbMs,
+  embedding_ms: embeddingMs,
+  retrieve_ms: retrieveMs,
+  llm_ms: llmMs,
+  steps: stepsForLog,
+  sources: matches
+});
 ```
 
 ## 6. API 设计
@@ -260,7 +314,12 @@ while (!done) {
 | `page.tsx` | 主页面 | 聊天界面，RAG 参数配置面板 |
 | `AgentStepsPanel.tsx` | Agent 执行步骤面板 | 实时可视化执行过程，支持折叠 |
 | `MarkdownRenderer.tsx` | Markdown 渲染器 | 支持 GFM、数学公式、代码高亮 |
+| `SourcesPanel.tsx` | 文档来源面板 | 显示相关文档片段，支持相似度排序 |
 | `UploadBox.tsx` | 文件上传组件 | 支持拖拽上传，文件类型验证 |
+| `runs/page.tsx` | 运行历史页面 | 展示运行历史列表，支持筛选 |
+| `runs/[id]/page.tsx` | 运行详情页面 | 展示完整的运行过程和结果 |
+| `documents/page.tsx` | 文档列表页面 | 展示上传的文档列表 |
+| `documents/[id]/page.tsx` | 文档详情页面 | 展示文档内容和片段 |
 
 ### 7.2 状态管理
 
@@ -276,6 +335,46 @@ while (!done) {
 - `sendMessage()`: 发送消息并处理流式响应
 - `hydrateFromLocal()`: 从本地存储恢复聊天记录
 - `setTopK()`, `setThreshold()`: 调整 RAG 参数
+
+**关键代码**：
+```typescript
+// 发送消息
+async sendMessage() {
+  const { input, isLoading, messages, topK, threshold } = get();
+  const userInput = input.trim();
+  if (!userInput || isLoading) return;
+
+  // 创建消息
+  const userMessage: Message = {
+    id: crypto.randomUUID(),
+    role: "user",
+    content: userInput,
+  };
+  const assistantMessage: Message = {
+    id: crypto.randomUUID(),
+    role: "assistant",
+    content: "",
+    sources: [],
+  };
+
+  // 构建历史
+  const historyForBackend = messages.map((m) => ({
+    role: m.role,
+    content: m.content,
+  }));
+
+  // 更新状态
+  set({
+    messages: [...messages, userMessage, assistantMessage],
+    steps: [],
+    isLoading: true,
+    input: "",
+  });
+
+  // 处理流式响应
+  // ...
+}
+```
 
 ## 8. 数据库设计
 
@@ -302,6 +401,11 @@ while (!done) {
    - `threshold`: RAG 参数
    - `matched_count`: 命中片段数
    - `duration_ms`: 耗时
+   - `request_id`: 请求 ID
+   - `ttfb_ms`: 首字节时间
+   - `embedding_ms`: 嵌入耗时
+   - `retrieve_ms`: 检索耗时
+   - `llm_ms`: 模型调用耗时
    - `steps`: 执行步骤 (JSON)
    - `sources`: 命中来源 (JSON)
    - `created_at`: 创建时间
@@ -350,6 +454,8 @@ $$;
 8. **性能优化**：JSONL 格式的高效解析
 9. **状态管理**：与 Zustand 的无缝集成
 10. **扩展性**：模块化设计便于功能扩展
+11. **监控指标**：详细的性能指标采集
+12. **请求追踪**：使用 requestId 进行请求追踪
 
 ## 10. 技术挑战与解决方案
 
@@ -368,6 +474,37 @@ $$;
 - 使用延迟初始化，在运行时才检查环境变量
 - 为客户端添加 Proxy 包装，延迟服务实例的创建
 
+**关键代码**：
+```typescript
+// 延迟初始化 Supabase 客户端
+let supabaseClientInstance: SupabaseClient | null = null;
+
+export function getSupabaseClient() {
+  if (!supabaseClientInstance) {
+    const url = process.env.NEXT_PUBLIC_SUPABASE_URL;
+    const key = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
+    
+    if (!url || !key) {
+      throw new Error("Missing Supabase environment variables");
+    }
+    
+    supabaseClientInstance = createClient(url, key);
+  }
+  return supabaseClientInstance;
+}
+
+// 为客户端提供 Proxy 包装
+export const supabase: SupabaseClient = new Proxy({} as SupabaseClient, {
+  get(_, prop: keyof SupabaseClient) {
+    return getSupabaseClient()[prop];
+  },
+  set(_, prop: keyof SupabaseClient, value) {
+    (getSupabaseClient() as any)[prop] = value;
+    return true;
+  },
+});
+```
+
 ### 10.3 RAG 优化
 
 **挑战**：平衡检索质量和性能
@@ -375,6 +512,14 @@ $$;
 - 可配置的检索参数
 - 文档片段相似度排序
 - 多轮对话历史支持
+
+### 10.4 性能监控
+
+**挑战**：监控系统性能和用户体验
+**解决方案**：
+- 详细的性能指标采集
+- 运行历史记录
+- 请求追踪和日志
 
 ## 11. 未来发展方向
 
@@ -388,6 +533,8 @@ $$;
 8. **监控系统**：添加性能监控和错误追踪
 9. **API 扩展**：提供更丰富的 API 接口
 10. **移动应用**：开发配套的移动应用
+11. **企业集成**：与企业现有系统集成
+12. **成本优化**：实现 token 使用和成本监控
 
 ## 12. 部署与配置
 
@@ -420,7 +567,38 @@ $$;
 - 类型检查
 - 生产构建
 
-## 13. 总结
+## 13. 项目状态评估
+
+### 13.1 当前状态
+
+- ✅ 核心功能实现完成
+  - 智能文档问答 (RAG)
+  - 流式响应系统
+  - 运行历史追踪
+  - 文档管理
+- ✅ 技术架构合理
+  - Next.js App Router
+  - TypeScript 类型安全
+  - Zustand 状态管理
+  - Supabase 数据库
+- ✅ 开发环境配置完成
+  - 依赖管理
+  - 类型检查
+  - CI/CD 配置
+- ⚠️ 待完善的功能
+  - 用户认证系统
+  - 多租户支持
+  - 完整的工具集成
+  - 部署配置
+
+### 13.2 技术债务
+
+- 环境变量管理：需要更完善的环境变量验证和错误处理
+- 错误处理：部分错误处理逻辑需要优化
+- 测试覆盖：缺少单元测试和集成测试
+- 文档：需要更详细的开发文档
+
+## 14. 总结
 
 企业文档智能助手项目是一个功能完整、架构合理、技术先进的 RAG 应用。通过端到端的流式处理，用户可以实时看到 AI 的思考过程，大大提升了用户体验。项目采用现代化的技术栈和架构设计，具有良好的扩展性和可维护性。
 
@@ -440,12 +618,13 @@ $$;
 - 模块化和组件化架构
 - 全面的类型安全
 - 完善的错误处理
+- 详细的性能监控
 
 这个项目不仅是一个实用的企业工具，也是学习现代 AI 应用开发的优秀范例，展示了如何构建一个功能完整、用户友好的 RAG 系统。
 
-## 14. 附录
+## 15. 附录
 
-### 14.1 关键文件列表
+### 15.1 关键文件列表
 
 | 文件路径 | 功能描述 | 重要性 |
 |---------|---------|--------|
@@ -459,26 +638,55 @@ $$;
 | `/src/types/chat.ts` | 聊天相关类型 | ⭐⭐⭐ |
 | `/src/types/agent.ts` | Agent 相关类型 | ⭐⭐⭐ |
 
-### 14.2 依赖关系图
+### 15.2 依赖关系图
 
 ```mermaid
 graph TD
     A[page.tsx] --> B[chatStore.ts]
     A --> C[AgentStepsPanel.tsx]
     A --> D[UploadBox.tsx]
-    B --> E[search/route.ts]
-    E --> F[ai-client.ts]
-    E --> G[embedClient.ts]
-    E --> H[supabaseClient.ts]
-    E --> I[run_history 表]
-    F --> J[OpenAI API]
-    G --> K[LangChain]
-    H --> L[Supabase]
+    A --> E[SourcesPanel.tsx]
+    B --> F[search/route.ts]
+    F --> G[ai-client.ts]
+    F --> H[embedClient.ts]
+    F --> I[supabaseClient.ts]
+    F --> J[run_history 表]
+    G --> K[OpenAI API]
+    H --> L[LangChain]
+    I --> M[Supabase]
+    F --> N[documents 表]
+    F --> O[document_chunks 表]
 ```
 
-### 14.3 性能指标
+### 15.3 性能指标
 
 - **响应时间**：流式响应，首字节时间 < 1s
 - **内存占用**：优化的流式处理，内存占用低
 - **扩展性**：支持横向扩展，适合企业级应用
 - **可靠性**：完善的错误处理和重试机制
+- **监控**：详细的性能指标和运行历史
+
+### 15.4 开发环境设置
+
+1. **Node.js**：版本 >= 20
+2. **依赖安装**：`npm install`
+3. **开发服务器**：`npm run dev`
+4. **类型检查**：`npm run typecheck`
+5. **构建**：`npm run build`
+6. **生产启动**：`npm start`
+
+### 15.5 数据库设置
+
+1. **Supabase 项目**：创建 Supabase 项目
+2. **环境变量**：配置 Supabase URL 和密钥
+3. **数据库迁移**：创建必要的表结构
+4. **向量扩展**：启用 pgvector 扩展
+5. **RPC 函数**：创建 match_documents 函数
+
+### 15.6 常见问题
+
+1. **环境变量错误**：确保所有必要的环境变量都已设置
+2. **数据库连接**：检查 Supabase 连接配置
+3. **AI API 错误**：确保 AI API 密钥有效
+4. **流式响应问题**：检查浏览器兼容性
+5. **性能问题**：调整 RAG 参数和服务器配置
