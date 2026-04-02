@@ -51,11 +51,11 @@ function setupMocks() {
       if (table === "document_chunks") return { insert: mockChunkInsert };
       return { insert: vi.fn() };
     }),
-  } as ReturnType<typeof getSupabaseClient>);
+  } as unknown as ReturnType<typeof getSupabaseClient>);
 
   vi.mocked(getEmbeddings).mockReturnValue({
     embedDocuments: vi.fn().mockResolvedValue([[0.1, 0.2, 0.3]]),
-  } as ReturnType<typeof getEmbeddings>);
+  } as unknown as ReturnType<typeof getEmbeddings>);
 
   return { mockDocInsert, mockChunkInsert };
 }
@@ -67,13 +67,13 @@ describe("POST /api/upload", () => {
     vi.clearAllMocks();
   });
 
-  it("非 txt/md 文件应返回 400", async () => {
-    const req = makeUploadRequest("hello", "report.pdf");
+  it("不支持的文件类型应返回 400", async () => {
+    const req = makeUploadRequest("hello", "report.docx");
     const res = await POST(req);
 
     expect(res.status).toBe(400);
     const body = await res.json();
-    expect(body.error).toMatch(/\.txt or \.md/i);
+    expect(body.error).toMatch(/\.txt.*\.md.*\.pdf|supported/i);
   });
 
   it("无文件应返回 500", async () => {

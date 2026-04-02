@@ -5,29 +5,64 @@ import { splitText } from "@/lib/textChunker";
 
 export const runtime = "nodejs";
 
+/** 支持的文件扩展名 */
+const SUPPORTED_EXTENSIONS = [".txt", ".md", ".pdf"];
+
+/**
+ * 从 PDF Buffer 中提取纯文本。
+ * pdf-parse v2 使用 class-based API。
+ */
+async function extractPdfText(buffer: Buffer): Promise<string> {
+  const { PDFParse } = await import("pdf-parse");
+  const parser = new PDFParse({ data: new Uint8Array(buffer) });
+  const result = await parser.getText();
+  await parser.destroy();
+  return result.text;
+}
+
+/**
+ * 根据文件扩展名提取文本内容。
+ * - .txt / .md → 直接 UTF-8 解码
+ * - .pdf → 用 pdf-parse 提取
+ */
+async function extractText(buffer: Buffer, filename: string): Promise<string> {
+  if (filename.endsWith(".pdf")) {
+    return extractPdfText(buffer);
+  }
+  return buffer.toString("utf-8");
+}
+
 export async function POST(req: Request) {
   try {
     const formData = await req.formData();
     const file = formData.get("file") as File | null;
     if (!file) throw new Error("No file uploaded");
 
-    // 🧠 Read file content
     const bytes = await file.arrayBuffer();
     const buffer = Buffer.from(bytes);
 
-    // ✅ Only allow .txt or .md
-    if (!file.name.endsWith(".txt") && !file.name.endsWith(".md")) {
+    // 校验文件扩展名
+    const ext = file.name.slice(file.name.lastIndexOf(".")).toLowerCase();
+    if (!SUPPORTED_EXTENSIONS.includes(ext)) {
       return NextResponse.json(
-        { error: "Only .txt or .md supported" },
-        { status: 400 }
+        { error: `Only ${SUPPORTED_EXTENSIONS.join(", ")} supported` },
+        { status: 400 },
       );
     }
 
-    const text = buffer.toString("utf-8");
+    // 提取文本（PDF 走 pdf-parse，其余 UTF-8 直接读）
+    const text = await extractText(buffer, file.name);
+    if (!text.trim()) {
+      return NextResponse.json(
+        { error: "File content is empty" },
+        { status: 400 },
+      );
+    }
     console.log("✅ Extracted text preview:", text.slice(0, 100));
+
     const supabase = getSupabaseClient();
 
-    // 🧱 Step 1: Save the original document
+    // Step 1: 保存原始文档
     const { data: docData, error: docErr } = await supabase
       .from("documents")
       .insert({ name: file.name, content: text })
@@ -36,28 +71,23 @@ export async function POST(req: Request) {
 
     if (docErr) throw docErr;
     const documentId = docData.id;
-    console.log("docData: ", docData);
     console.log("📄 Document inserted:", documentId);
 
-    // 🧩 Step 2: Split into chunks
+    // Step 2: 分片
     const chunks = splitText(text);
-    console.log("chunks: ", chunks);
     console.log("🪣 Split into", chunks.length, "chunks");
 
-    // 🧠 Step 3: Create embeddings for each chunk
+    // Step 3: 逐个 embedding 并存入 document_chunks
     for (const chunk of chunks) {
       try {
         const embeddings = getEmbeddings();
-
         const [vector] = await embeddings.embedDocuments([chunk]);
-        console.log("vector: ", vector);
 
         const res = await supabase.from("document_chunks").insert({
           document_id: documentId,
           content: chunk,
           embedding: vector,
         });
-        console.log("res: ", res);
 
         if (res.error) console.error("❌ Chunk insert error:", res.error);
       } catch (e) {
@@ -65,17 +95,14 @@ export async function POST(req: Request) {
       }
     }
 
-    // ✅ Return success
     return NextResponse.json({
       message: "File uploaded and embedded successfully!",
       filename: file.name,
       chunks: chunks.length,
     });
-  } catch (err: any) {
+  } catch (err) {
+    const message = err instanceof Error ? err.message : "Upload failed";
     console.error("❌ Upload error:", err);
-    return NextResponse.json(
-      { error: err.message || "Upload failed" },
-      { status: 500 }
-    );
+    return NextResponse.json({ error: message }, { status: 500 });
   }
 }
