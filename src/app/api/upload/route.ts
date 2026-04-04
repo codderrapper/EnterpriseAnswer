@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { getSupabaseClient } from "@/lib/supabaseClient";
 import { getEmbeddings } from "@/lib/embedClient";
 import { splitText } from "@/lib/textChunker";
+import { getDemoWorkspaceIdOrThrow } from "@/lib/demoWorkspace";
 
 export const runtime = "nodejs";
 
@@ -66,11 +67,12 @@ export async function POST(req: Request) {
     console.log("✅ Extracted text preview:", text.slice(0, 100));
 
     const supabase = getSupabaseClient();
+    const workspaceId = getDemoWorkspaceIdOrThrow();
 
     // Step 1: 保存原始文档
     const { data: docData, error: docErr } = await supabase
       .from("documents")
-      .insert({ name: file.name, content: text })
+      .insert({ name: file.name, content: text, workspace_id: workspaceId })
       .select("id")
       .single();
 
