@@ -1,7 +1,15 @@
 import { NextRequest, NextResponse } from "next/server";
+import { z } from "zod";
 import { getSupabaseClient } from "@/lib/supabaseClient";
 
 export const runtime = "nodejs";
+
+const FeedbackInputSchema = z.object({
+  runId: z.number().int().positive("runId is required"),
+  vote: z.enum(["up", "down"], { message: "vote must be up/down" }).optional(),
+  isHallucination: z.boolean().default(false),
+  note: z.string().trim().default(""),
+});
 
 export async function GET(req: NextRequest) {
   try {
@@ -43,31 +51,15 @@ export async function GET(req: NextRequest) {
 
 export async function POST(req: Request) {
   try {
-    const body = (await req.json()) as {
-      runId?: number;
-      vote?: "up" | "down";
-      isHallucination?: boolean;
-      note?: string;
-    };
-
-    const runId = Number(body.runId);
-    const vote = body.vote;
-    const isHallucination = Boolean(body.isHallucination);
-    const note = (body.note || "").trim();
-
-    if (!Number.isFinite(runId) || runId <= 0) {
+    const parsed = FeedbackInputSchema.safeParse(await req.json());
+    if (!parsed.success) {
       return NextResponse.json(
-        { error: "runId is required", errorCode: "INVALID_PAYLOAD" },
+        { error: parsed.error.issues[0]?.message ?? "Invalid payload", errorCode: "INVALID_PAYLOAD" },
         { status: 400 },
       );
     }
-
-    if (vote !== "up" && vote !== "down") {
-      return NextResponse.json(
-        { error: "vote must be up/down", errorCode: "INVALID_PAYLOAD" },
-        { status: 400 },
-      );
-    }
+    
+    const { runId, vote, isHallucination, note } = parsed.data;
 
     const supabase = getSupabaseClient();
 

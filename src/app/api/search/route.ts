@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { z } from "zod";
 import { getSupabaseClient } from "@/lib/supabaseClient";
 import { getEmbeddings } from "@/lib/embedClient";
 import { getAIClient, AI_MODEL } from "@/lib/ai-client";
@@ -19,10 +20,19 @@ import { rerankChunks } from "@/lib/reranker";
 
 export const runtime = "nodejs";
 
-type HistoryItem = {
-  role: "user" | "assistant";
-  content: string;
-};
+/** Zod schema：声明式定义 /api/search 接受的参数及校验规则 */
+const SearchInputSchema = z.object({
+  question: z.string().min(1, "Missing question"),
+  history: z
+    .array(z.object({ role: z.enum(["user", "assistant"]), content: z.string() }))
+    .optional(),
+  topK: z.number().int().min(1).max(20).default(5),
+  threshold: z.number().min(0).max(1).default(0.4),
+  model: z.string().trim().min(1).optional(),
+  promptVersion: z.number().int().finite().nullish(),
+  rewrite: z.boolean().default(false),
+  rerank: z.boolean().default(false),
+});
 
 type MatchRow = {
   id: number;
@@ -43,29 +53,27 @@ type StepLog = {
 
 export async function POST(req: Request) {
   try {
+    // Zod 一行完成参数校验 + 默认值填充 + 类型推导
+    const parsed = SearchInputSchema.safeParse(await req.json());
+    if (!parsed.success) {
+      return NextResponse.json(
+        { error: parsed.error.issues[0]?.message ?? "Invalid input" },
+        { status: 400 },
+      );
+    }
+
     const {
       question,
       history,
-      topK,
-      threshold,
+      topK: safeTopK,
+      threshold: safeThreshold,
       model,
-      promptVersion,
-      rewrite,
-      rerank,
-    } = (await req.json()) as {
-      question?: string;
-      history?: HistoryItem[];
-      topK?: number;
-      threshold?: number;
-      model?: string;
-      promptVersion?: number;
-      rewrite?: boolean;
-      rerank?: boolean;
-    };
+      promptVersion: safePromptVersion,
+      rewrite: useRewrite,
+      rerank: useRerank,
+    } = parsed.data;
 
-    if (!question?.trim()) {
-      return NextResponse.json({ error: "Missing question" }, { status: 400 });
-    }
+    const safeModel = model ?? AI_MODEL;
 
     const workspaceId = getDemoWorkspaceIdOrThrow();
     const limit = enforceSearchRateLimit(workspaceId);
@@ -76,27 +84,13 @@ export async function POST(req: Request) {
       );
     }
 
-    const safeTopK =
-      typeof topK === "number" && topK > 0 && topK <= 20 ? Math.floor(topK) : 5;
-    const safeThreshold =
-      typeof threshold === "number" && threshold >= 0 && threshold <= 1
-        ? threshold
-        : 0.4;
-    const safeModel = typeof model === "string" && model.trim() ? model.trim() : AI_MODEL;
-    const safePromptVersion =
-      typeof promptVersion === "number" && Number.isFinite(promptVersion)
-        ? Math.floor(promptVersion)
-        : null;
-    const useRewrite = Boolean(rewrite);
-    const useRerank = Boolean(rerank);
-
     const cacheKey = buildSearchCacheKey({
       workspaceId,
       question,
       topK: safeTopK,
       threshold: safeThreshold,
       model: safeModel,
-      promptVersion: safePromptVersion,
+      promptVersion: safePromptVersion ?? null,
       rewrite: useRewrite,
       rerank: useRerank,
     });

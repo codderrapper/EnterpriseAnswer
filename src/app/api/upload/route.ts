@@ -8,6 +8,9 @@ export const runtime = "nodejs";
 /** 支持的文件扩展名 */
 const SUPPORTED_EXTENSIONS = [".txt", ".md", ".pdf"];
 
+/** 上传文件大小上限：10 MB */
+const MAX_FILE_SIZE = 10 * 1024 * 1024;
+
 /**
  * 从 PDF Buffer 中提取纯文本。
  * pdf-parse v2 使用 class-based API。
@@ -38,10 +41,6 @@ export async function POST(req: Request) {
     const file = formData.get("file") as File | null;
     if (!file) throw new Error("No file uploaded");
 
-    const bytes = await file.arrayBuffer();
-    const buffer = Buffer.from(bytes);
-
-    // 校验文件扩展名
     const ext = file.name.slice(file.name.lastIndexOf(".")).toLowerCase();
     if (!SUPPORTED_EXTENSIONS.includes(ext)) {
       return NextResponse.json(
@@ -49,6 +48,12 @@ export async function POST(req: Request) {
         { status: 400 },
       );
     }
+    if (file.size > MAX_FILE_SIZE) {
+      return NextResponse.json({ error: "File too large (max 10MB)" }, { status: 400 });
+    }
+
+    const bytes = await file.arrayBuffer();
+    const buffer = Buffer.from(bytes);
 
     // 提取文本（PDF 走 pdf-parse，其余 UTF-8 直接读）
     const text = await extractText(buffer, file.name);

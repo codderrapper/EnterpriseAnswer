@@ -1,16 +1,27 @@
 const DEFAULT_WORKSPACE_ID = process.env.DEFAULT_WORKSPACE_ID;
 
 import { NextResponse } from "next/server";
+import { z } from "zod";
 import { getSupabaseClient } from "@/lib/supabaseClient";
 import { getEmbeddings } from "@/lib/embedClient";
 import { getAIClient, AI_MODEL } from "@/lib/ai-client";
 import { getDemoWorkspaceIdOrThrow } from "@/lib/demoWorkspace";
 export const runtime = "nodejs";
 
+const AskInputSchema = z.object({
+  question: z.string().min(1, "Missing question"),
+});
+
 export async function POST(req: Request) {
   try {
-    const { question } = await req.json();
-    if (!question) throw new Error("Missing question");
+    const parsed = AskInputSchema.safeParse(await req.json());
+    if (!parsed.success) {
+      return NextResponse.json(
+        { error: parsed.error.issues[0]?.message ?? "Invalid input" },
+        { status: 400 },
+      );
+    }
+    const { question } = parsed.data;
 
     const embeddings = getEmbeddings();
 

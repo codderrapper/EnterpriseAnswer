@@ -1,7 +1,19 @@
 import { NextRequest, NextResponse } from "next/server";
+import { z } from "zod";
 import { getSupabaseClient } from "@/lib/supabaseClient";
 
 export const runtime = "nodejs";
+
+const PromptPostSchema = z.object({
+  name: z.string().trim().default("search_system"),
+  content: z.string().trim().min(1, "content is required"),
+  isActive: z.boolean().default(true),
+});
+
+const PromptPatchSchema = z.object({
+  id: z.number().int().finite({ message: "id is required" }),
+  activate: z.boolean().default(true),
+});
 
 export async function GET(req: NextRequest) {
   try {
@@ -42,22 +54,15 @@ export async function GET(req: NextRequest) {
 
 export async function POST(req: Request) {
   try {
-    const body = (await req.json()) as {
-      name?: string;
-      content?: string;
-      isActive?: boolean;
-    };
-
-    const name = (body.name || "search_system").trim();
-    const content = (body.content || "").trim();
-    const isActive = body.isActive !== false;
-
-    if (!content) {
+    const parsed = PromptPostSchema.safeParse(await req.json());
+    if (!parsed.success) {
       return NextResponse.json(
-        { error: "content is required", errorCode: "INVALID_PAYLOAD" },
+        { error: parsed.error.issues[0]?.message ?? "Invalid payload", errorCode: "INVALID_PAYLOAD" },
         { status: 400 },
       );
     }
+
+    const { name, content, isActive } = parsed.data;
 
     const supabase = getSupabaseClient();
     const { data: latest, error: latestError } = await supabase
@@ -110,21 +115,15 @@ export async function POST(req: Request) {
 
 export async function PATCH(req: Request) {
   try {
-    const body = (await req.json()) as {
-      id?: number;
-      name?: string;
-      activate?: boolean;
-    };
-
-    const id = Number(body.id);
-    const activate = body.activate !== false;
-
-    if (!Number.isFinite(id)) {
+    const parsed = PromptPatchSchema.safeParse(await req.json());
+    if (!parsed.success) {
       return NextResponse.json(
-        { error: "id is required", errorCode: "INVALID_PAYLOAD" },
+        { error: parsed.error.issues[0]?.message ?? "Invalid payload", errorCode: "INVALID_PAYLOAD" },
         { status: 400 },
       );
     }
+
+    const { id, activate } = parsed.data;
 
     const supabase = getSupabaseClient();
     const { data: row, error: rowError } = await supabase
