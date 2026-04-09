@@ -68,4 +68,28 @@
 *   **调优手段 (Action)：**
     1.  **动态阈值调节：** 我在前端开发了 RAG 参数可视化控制台，通过对真实企业数据的反复评测，将阈值提高到了 0.55-0.6，瞬间将检索准确率（Precision）提升到了 95% 以上，彻底过滤了噪音 Chunk。
     2.  **分块策略升级认知：** 针对基础的定长切割（Fixed-size Chunking）容易破坏语义完整性的问题，我规划了向“基于 Markdown 标题结构（Heading-based）”和“语义段落”的拆分策略演进方案，确保每个被检索到的 Chunk 本身具备独立完整的逻辑。
-    3.  **重排兜底：** 设计了在检索召回后，引入 Reranker 模型进行二次交叉打分的架构预案，用以弥补纯向量检索（Cosine Similarity）“只懂字面不懂逻辑”的缺陷。
+    3.  **重排兜底：** 设计了在检索召回后，引入 Reranker 模型进行二次交叉打分的架构预案，用以弥补纯向量检索（Cosine Similarity）”只懂字面不懂逻辑”的缺陷。
+
+---
+
+## 亮点五：CRAG（Corrective RAG）with LangGraph 可视化
+
+**面试官可能会问：**
+- “你在这个 RAG 项目里用了什么方法提升检索准确率？”
+- “LangGraph 和普通 LangChain Chain 的区别是什么？”
+- “你的 AI Agent 是怎么处理检索结果质量差的问题的？”
+
+**核心叙述思路（为什么 LangGraph，为什么 CRAG）：**
+
+普通 RAG 把向量相似度当作唯一质量信号——相似度够高就直接喂给 LLM。但我在测试时发现，文档里如果大量出现”员工、公司”等高频词，不相关的段落相似度也能达到 0.5 以上，导致生成回答混入噪音上下文（幻觉来源）。
+
+于是我引入了 CRAG（Corrective RAG）架构：
+
+1. **问题：** 向量检索是”字面匹配”，无法判断语义相关性。
+2. **行动：** 在 retrieve 之后加入 `gradeDocuments` 节点，用一次 LLM 调用批量评估所有 chunk 的相关性（relevant / partial / irrelevant），并给出结构化理由。
+3. **关键设计：** 当无相关 chunk 时，不直接 fallback，而是触发 `rewriteQuery` 节点重写查询后重试——这形成了一个 `retrieve → grade → rewrite → retrieve` 的 cycle，这也是为什么选用 LangGraph 而不是普通 Chain 的原因：LangGraph 原生支持有环图，普通 DAG 框架无法表达这种重试逻辑。
+4. **工程亮点：** graph state 与前端可观测事件严格分离——节点通过 `config.configurable.send` 回调推送事件，而不是把前端事件混进 graph state。这让 CRAG 的执行过程可以实时可视化（ReactFlow 实时节点动画），而不是黑盒。
+5. **结果：** 检索准确率（Precision）提升，且每次执行都有 per-chunk 的评分记录，可追溯、可调试。
+
+**LangGraph 使用理由（一句话）：**
+> CRAG 的核心价值是在检索质量不足时重写查询重试，这个 retry cycle 是 LangGraph 的核心适用场景，普通顺序 Chain 无法表达有环图。
