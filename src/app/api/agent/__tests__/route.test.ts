@@ -86,6 +86,21 @@ describe("POST /api/agent", () => {
     expect(completed?.runId).toBe(42);
   });
 
+  it("sends error event when graph throws", async () => {
+    const { cragGraph } = await import("@/lib/crag/graph");
+    vi.mocked(cragGraph.invoke).mockRejectedValueOnce(new Error("graph exploded"));
+    const { POST } = await import("../route");
+    const req = new Request("http://localhost/api/agent", {
+      method: "POST",
+      body: JSON.stringify({ question: "test error" }),
+    });
+    const res = await POST(req);
+    expect(res.status).toBe(200); // stream always opens with 200
+    const events = await collectStream(res);
+    const errEvent = events.find(e => e.type === "error") as { type: string; message: string } | undefined;
+    expect(errEvent?.message).toBe("graph exploded");
+  });
+
   it("accepts topK and threshold overrides", async () => {
     const { POST } = await import("../route");
     const { makeCragInitialState } = await import("@/lib/crag/graph");

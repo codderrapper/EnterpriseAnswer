@@ -2,7 +2,7 @@
 import { NextResponse } from "next/server";
 import { z } from "zod";
 import { cragGraph, makeCragInitialState } from "@/lib/crag/graph";
-import type { AgentEvent } from "@/lib/crag/types";
+import type { AgentEvent, CragState } from "@/lib/crag/types";
 import { getSupabaseClient } from "@/lib/supabaseClient";
 
 export const runtime = "nodejs";
@@ -41,17 +41,17 @@ export async function POST(req: Request) {
 
         const result = await cragGraph.invoke(initialState, {
           configurable: { send },
-        });
+        }) as CragState;
 
         const supabase = getSupabaseClient();
-        const { data: run } = await supabase
+        const { data: run, error: dbError } = await supabase
           .from("agent_runs")
           .insert({
             question,
-            active_query:  result.activeQuery  as string,
-            retry_count:   result.retryCount   as number,
-            route:         (result.decision as { route: string } | undefined)?.route ?? "fallback",
-            answer:        result.answer       as string,
+            active_query:  result.activeQuery,
+            retry_count:   result.retryCount,
+            route:         result.decision?.route ?? "fallback",
+            answer:        result.answer,
             graded_docs:   result.gradedDocs,
             selected_docs: result.selectedDocs,
             decision:      result.decision,
@@ -60,7 +60,8 @@ export async function POST(req: Request) {
           .select("id")
           .single();
 
-        send({ type: "run_completed", runId: (run as { id: number } | null)?.id ?? 0 });
+        if (dbError) throw new Error(`DB insert failed: ${dbError.message}`);
+        send({ type: "run_completed", runId: run?.id ?? 0 });
       } catch (err) {
         send({ type: "error", message: err instanceof Error ? err.message : String(err) });
       } finally {
