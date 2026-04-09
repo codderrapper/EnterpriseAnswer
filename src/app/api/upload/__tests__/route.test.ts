@@ -7,6 +7,9 @@ vi.mock("@/lib/supabaseClient", () => ({
 vi.mock("@/lib/embedClient", () => ({
   getEmbeddings: vi.fn(),
 }));
+vi.mock("@/lib/demoWorkspace", () => ({
+  getDemoWorkspaceIdOrThrow: vi.fn().mockReturnValue("ws-test"),
+}));
 
 import { POST } from "../route";
 import { getSupabaseClient } from "@/lib/supabaseClient";
