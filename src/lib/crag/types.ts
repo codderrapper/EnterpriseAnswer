@@ -50,7 +50,7 @@ export type NodeOutputSummary =
   | { node: "retrieve";       count: number; topSimilarity: number }
   | { node: "gradeDocuments"; relevant: number; partial: number; irrelevant: number; route: string }
   | { node: "rewriteQuery";   original: string; rewritten: string }
-  | { node: "generate";       tokens: number }
+  | { node: "generate";       chars: number }
   | { node: "fallback";       reason: string; retryCount: number };
 
 export type AgentEvent =

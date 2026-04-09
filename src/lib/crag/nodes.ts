@@ -48,6 +48,8 @@ export async function retrieveNode(
 
 // ─── gradeDocuments ───────────────────────────────────────────────────────────
 
+const VALID_RELEVANCE = new Set(["relevant", "partial", "irrelevant"]);
+
 const GRADE_SYSTEM_PROMPT = `你是一个文档相关性评估助手。
 给定用户问题和若干文档片段，判断每个片段与问题的相关程度。
 
@@ -111,7 +113,9 @@ export async function gradeDocumentsNode(
     const grade = grades.find(g => g.id === chunk.id);
     return {
       ...chunk,
-      relevance: (grade?.relevance as GradedChunk["relevance"]) ?? "irrelevant",
+      relevance: VALID_RELEVANCE.has(grade?.relevance ?? "")
+        ? (grade!.relevance as GradedChunk["relevance"])
+        : "irrelevant",
       confidence: grade?.confidence ?? 0,
       reason: grade?.reason ?? "",
     };
@@ -166,8 +170,8 @@ export async function rewriteQueryNode(
   const summary: NodeOutputSummary = {
     node: "rewriteQuery", original: state.activeQuery, rewritten,
   };
-  send({ type: "edge_taken", from: "rewriteQuery", to: "retrieve", reason: `重试第 ${state.retryCount + 1} 次` });
   send({ type: "node_completed", node: "rewriteQuery", ts: Date.now(), data: summary });
+  send({ type: "edge_taken", from: "rewriteQuery", to: "retrieve", reason: `重试第 ${state.retryCount + 1} 次` });
 
   // IMPORTANT: return [rewritten] not [...state.queryHistory, rewritten]
   // The CragStateAnnotation reducer for queryHistory is append-mode:
@@ -216,7 +220,7 @@ export async function generateNode(
     }
   }
 
-  const summary: NodeOutputSummary = { node: "generate", tokens: answer.length };
+  const summary: NodeOutputSummary = { node: "generate", chars: answer.length };
   send({ type: "node_completed", node: "generate", ts: Date.now(), data: summary });
 
   return { answer };
