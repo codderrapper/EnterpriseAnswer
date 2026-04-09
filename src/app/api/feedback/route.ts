@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { z } from "zod";
-import { getSupabaseClient } from "@/lib/supabaseClient";
+import { getSupabaseServerClient } from "@/lib/supabaseServer";
 
 export const runtime = "nodejs";
 
@@ -23,7 +23,7 @@ export async function GET(req: NextRequest) {
       );
     }
 
-    const supabase = getSupabaseClient();
+    const supabase = await getSupabaseServerClient();
 
     const { data, error } = await supabase
       .from("answer_feedback")
@@ -61,7 +61,7 @@ export async function POST(req: Request) {
     
     const { runId, vote, isHallucination, note } = parsed.data;
 
-    const supabase = getSupabaseClient();
+    const supabase = await getSupabaseServerClient();
 
     const { data, error } = await supabase
       .from("answer_feedback")

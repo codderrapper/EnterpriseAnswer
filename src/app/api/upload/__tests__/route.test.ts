@@ -1,18 +1,18 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
 
 // ── Mock 外部依赖 ──────────────────────────────────
-vi.mock("@/lib/supabaseClient", () => ({
-  getSupabaseClient: vi.fn(),
+vi.mock("@/lib/supabaseServer", () => ({
+  getSupabaseServerClient: vi.fn(),
 }));
 vi.mock("@/lib/embedClient", () => ({
   getEmbeddings: vi.fn(),
 }));
-vi.mock("@/lib/demoWorkspace", () => ({
-  getDemoWorkspaceIdOrThrow: vi.fn().mockReturnValue("ws-test"),
+vi.mock("@/lib/workspace", () => ({
+  resolveWorkspaceId: vi.fn().mockResolvedValue("ws-test"),
 }));
 
 import { POST } from "../route";
-import { getSupabaseClient } from "@/lib/supabaseClient";
+import { getSupabaseServerClient } from "@/lib/supabaseServer";
 import { getEmbeddings } from "@/lib/embedClient";
 
 // ── Helpers ─────────────────────────────────────────
@@ -48,13 +48,13 @@ function setupMocks() {
   const mockDocInsert = vi.fn().mockReturnValue({ select: mockSelect });
   const mockChunkInsert = vi.fn().mockReturnValue({ data: null, error: null });
 
-  vi.mocked(getSupabaseClient).mockReturnValue({
+  vi.mocked(getSupabaseServerClient).mockResolvedValue({
     from: vi.fn((table: string) => {
       if (table === "documents") return { insert: mockDocInsert };
       if (table === "document_chunks") return { insert: mockChunkInsert };
       return { insert: vi.fn() };
     }),
-  } as unknown as ReturnType<typeof getSupabaseClient>);
+  } as unknown as Awaited<ReturnType<typeof getSupabaseServerClient>>);
 
   vi.mocked(getEmbeddings).mockReturnValue({
     embedDocuments: vi.fn().mockResolvedValue([[0.1, 0.2, 0.3]]),

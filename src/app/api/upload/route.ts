@@ -1,8 +1,8 @@
 import { NextResponse } from "next/server";
-import { getSupabaseClient } from "@/lib/supabaseClient";
+import { getSupabaseServerClient } from "@/lib/supabaseServer";
+import { resolveWorkspaceId } from "@/lib/workspace";
 import { getEmbeddings } from "@/lib/embedClient";
 import { splitText } from "@/lib/textChunker";
-import { getDemoWorkspaceIdOrThrow } from "@/lib/demoWorkspace";
 
 export const runtime = "nodejs";
 
@@ -66,8 +66,8 @@ export async function POST(req: Request) {
     }
     console.log("✅ Extracted text preview:", text.slice(0, 100));
 
-    const supabase = getSupabaseClient();
-    const workspaceId = getDemoWorkspaceIdOrThrow();
+    const supabase = await getSupabaseServerClient();
+    const workspaceId = await resolveWorkspaceId(supabase);
 
     // Step 1: 保存原始文档
     const { data: docData, error: docErr } = await supabase

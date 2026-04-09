@@ -23,15 +23,15 @@ vi.mock("@/lib/crag/graph", () => ({
       };
     }),
   },
-  makeCragInitialState: vi.fn((q: string, k: number, t: number) => ({
-    originalQuestion: q, activeQuery: q, topK: k, threshold: t,
+  makeCragInitialState: vi.fn((q: string, k: number, t: number, wid: string) => ({
+    workspaceId: wid, originalQuestion: q, activeQuery: q, topK: k, threshold: t,
     queryHistory: [], retryCount: 0, retrievedDocs: [], gradedDocs: [],
     selectedDocs: [], decision: undefined, answer: "", fallbackMessage: undefined,
   })),
 }));
 
-vi.mock("@/lib/supabaseClient", () => ({
-  getSupabaseClient: () => ({
+vi.mock("@/lib/supabaseServer", () => ({
+  getSupabaseServerClient: () => Promise.resolve({
     from: () => ({
       insert: () => ({
         select: () => ({
@@ -40,6 +40,10 @@ vi.mock("@/lib/supabaseClient", () => ({
       }),
     }),
   }),
+}));
+
+vi.mock("@/lib/workspace", () => ({
+  resolveWorkspaceId: vi.fn().mockResolvedValue("ws-test"),
 }));
 
 async function collectStream(res: Response): Promise<Array<Record<string, unknown>>> {
@@ -109,6 +113,6 @@ describe("POST /api/agent", () => {
       body: JSON.stringify({ question: "test", topK: 10, threshold: 0.7 }),
     });
     await POST(req);
-    expect(vi.mocked(makeCragInitialState)).toHaveBeenCalledWith("test", 10, 0.7);
+    expect(vi.mocked(makeCragInitialState)).toHaveBeenCalledWith("test", 10, 0.7, "ws-test");
   });
 });

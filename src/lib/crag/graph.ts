@@ -21,6 +21,7 @@ import {
 // Annotation.Root defines state structure and merge strategy per field.
 // Default reducer replaces the field value; custom reducers accumulate.
 const CragStateAnnotation = Annotation.Root({
+  workspaceId:      Annotation<string>(),
   originalQuestion: Annotation<string>(),
   activeQuery:      Annotation<string>(),
   // append-mode: nodes return only new items, reducer accumulates history
@@ -78,8 +79,10 @@ export function makeCragInitialState(
   question: string,
   topK: number,
   threshold: number,
+  workspaceId: string,
 ): CragState {
   return {
+    workspaceId,
     originalQuestion: question,
     activeQuery:      question,
     queryHistory:     [],

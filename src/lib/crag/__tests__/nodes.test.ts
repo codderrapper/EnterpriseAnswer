@@ -25,20 +25,15 @@ vi.mock("@/lib/ai-client", () => ({
   AI_MODEL: "gpt-4o-mini",
 }));
 
-vi.mock("@/lib/supabaseClient", () => ({
-  getSupabaseClient: () => ({ rpc: vi.fn().mockResolvedValue({ data: [] }) }),
-}));
 vi.mock("@/lib/embedClient", () => ({
   getEmbeddings: () => ({ embedDocuments: vi.fn().mockResolvedValue([[0.1, 0.2]]) }),
-}));
-vi.mock("@/lib/demoWorkspace", () => ({
-  getDemoWorkspaceIdOrThrow: () => "demo-ws",
 }));
 vi.mock("@/lib/queryRewrite", () => ({
   rewriteQuery: vi.fn().mockResolvedValue({ rewritten: "年假 申请 流程", original: "年假怎么申请" }),
 }));
 
 const makeState = (overrides: Partial<CragState> = {}): CragState => ({
+  workspaceId: "demo-ws",
   originalQuestion: "年假怎么申请",
   activeQuery: "年假怎么申请",
   queryHistory: [],

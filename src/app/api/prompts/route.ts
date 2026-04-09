@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { z } from "zod";
-import { getSupabaseClient } from "@/lib/supabaseClient";
+import { getSupabaseServerClient } from "@/lib/supabaseServer";
 
 export const runtime = "nodejs";
 
@@ -21,7 +21,7 @@ export async function GET(req: NextRequest) {
     const name = searchParams.get("name") || "search_system";
     const onlyActive = searchParams.get("active") === "1";
 
-    const supabase = getSupabaseClient();
+    const supabase = await getSupabaseServerClient();
     let query = supabase
       .from("prompt_templates")
       .select("id,name,version,content,is_active,created_at")
@@ -64,7 +64,7 @@ export async function POST(req: Request) {
 
     const { name, content, isActive } = parsed.data;
 
-    const supabase = getSupabaseClient();
+    const supabase = await getSupabaseServerClient();
     const { data: latest, error: latestError } = await supabase
       .from("prompt_templates")
       .select("version")
@@ -125,7 +125,7 @@ export async function PATCH(req: Request) {
 
     const { id, activate } = parsed.data;
 
-    const supabase = getSupabaseClient();
+    const supabase = await getSupabaseServerClient();
     const { data: row, error: rowError } = await supabase
       .from("prompt_templates")
       .select("id,name")

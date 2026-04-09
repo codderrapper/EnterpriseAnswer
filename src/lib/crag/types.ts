@@ -29,6 +29,7 @@ export type Decision = {
 };
 
 export type CragState = {
+  workspaceId: string;
   originalQuestion: string;
   activeQuery: string;
   queryHistory: string[];

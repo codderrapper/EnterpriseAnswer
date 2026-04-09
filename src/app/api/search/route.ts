@@ -1,9 +1,9 @@
 import { NextResponse } from "next/server";
 import { z } from "zod";
-import { getSupabaseClient } from "@/lib/supabaseClient";
+import { getSupabaseServerClient } from "@/lib/supabaseServer";
+import { resolveWorkspaceId } from "@/lib/workspace";
 import { getEmbeddings } from "@/lib/embedClient";
 import { getAIClient, AI_MODEL } from "@/lib/ai-client";
-import { getDemoWorkspaceIdOrThrow } from "@/lib/demoWorkspace";
 import {
   buildSearchCacheKey,
   enforceSearchRateLimit,
@@ -75,7 +75,8 @@ export async function POST(req: Request) {
 
     const safeModel = model ?? AI_MODEL;
 
-    const workspaceId = getDemoWorkspaceIdOrThrow();
+    const supabase = await getSupabaseServerClient();
+    const workspaceId = await resolveWorkspaceId(supabase);
     const limit = enforceSearchRateLimit(workspaceId);
     if (!limit.ok) {
       return NextResponse.json(
@@ -210,7 +211,6 @@ export async function POST(req: Request) {
 
         const flushRunHistory = async () => {
           try {
-            const supabase = getSupabaseClient();
             const durationMs = Date.now() - startTime;
             await supabase.from("run_history").insert({
               question,
@@ -287,7 +287,6 @@ export async function POST(req: Request) {
           const r0 = Date.now();
           let rawMatches: any[] | null = null;
           try {
-            const supabase = getSupabaseClient();
             log("retrieve_start", { workspaceId, safeTopK, safeThreshold });
             const { data, error } = await supabase.rpc("match_documents", {
               query_embedding: queryVector,

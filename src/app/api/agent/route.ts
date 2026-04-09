@@ -3,7 +3,8 @@ import { NextResponse } from "next/server";
 import { z } from "zod";
 import { cragGraph, makeCragInitialState } from "@/lib/crag/graph";
 import type { AgentEvent, CragState } from "@/lib/crag/types";
-import { getSupabaseClient } from "@/lib/supabaseClient";
+import { getSupabaseServerClient } from "@/lib/supabaseServer";
+import { resolveWorkspaceId } from "@/lib/workspace";
 
 export const runtime = "nodejs";
 
@@ -26,6 +27,11 @@ export async function POST(req: Request) {
   const encoder = new TextEncoder();
   const t0 = Date.now();
 
+  // Must resolve auth context before entering the ReadableStream callback,
+  // as cookies() is only available synchronously in the request lifecycle.
+  const supabase = await getSupabaseServerClient();
+  const workspaceId = await resolveWorkspaceId(supabase);
+
   // The send callback drives the JSONL stream. Each node calls send() synchronously
   // from within graph.invoke(), which enqueues bytes directly into the ReadableStream.
   // This means token streaming works without any special LangGraph stream mode —
@@ -37,13 +43,14 @@ export async function POST(req: Request) {
       };
 
       try {
-        const initialState = makeCragInitialState(question, topK, threshold);
+        const initialState = makeCragInitialState(question, topK, threshold, workspaceId);
 
+        // Inject supabase (carries user JWT) via configurable so retrieveNode
+        // can call match_documents with auth.uid() set — RLS enforces workspace isolation.
         const result = await cragGraph.invoke(initialState, {
-          configurable: { send },
+          configurable: { send, supabase },
         }) as CragState;
 
-        const supabase = getSupabaseClient();
         const { data: run, error: dbError } = await supabase
           .from("agent_runs")
           .insert({

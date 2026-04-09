@@ -1,8 +1,8 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
 
 // ── Mock 所有外部依赖 ──────────────────────────────
-vi.mock("@/lib/supabaseClient", () => ({
-  getSupabaseClient: vi.fn(),
+vi.mock("@/lib/supabaseServer", () => ({
+  getSupabaseServerClient: vi.fn(),
 }));
 vi.mock("@/lib/embedClient", () => ({
   getEmbeddings: vi.fn(),
@@ -11,8 +11,8 @@ vi.mock("@/lib/ai-client", () => ({
   getAIClient: vi.fn(),
   AI_MODEL: "test-model",
 }));
-vi.mock("@/lib/demoWorkspace", () => ({
-  getDemoWorkspaceIdOrThrow: vi.fn(() => "ws-test"),
+vi.mock("@/lib/workspace", () => ({
+  resolveWorkspaceId: vi.fn().mockResolvedValue("ws-test"),
 }));
 vi.mock("@/lib/promptTemplate", () => ({
   DEFAULT_SYSTEM_PROMPT: "你是测试助手",
@@ -33,7 +33,7 @@ vi.mock("@/lib/reranker", () => ({
 }));
 
 import { POST } from "../route";
-import { getSupabaseClient } from "@/lib/supabaseClient";
+import { getSupabaseServerClient } from "@/lib/supabaseServer";
 import { getEmbeddings } from "@/lib/embedClient";
 import { getAIClient } from "@/lib/ai-client";
 import { enforceSearchRateLimit } from "@/lib/runtimeGuards";
@@ -80,10 +80,10 @@ function setupMocks(options?: {
 
   // Supabase mock
   const mockInsert = vi.fn().mockReturnValue({ data: null, error: null });
-  vi.mocked(getSupabaseClient).mockReturnValue({
+  vi.mocked(getSupabaseServerClient).mockResolvedValue({
     rpc: vi.fn().mockResolvedValue({ data: matches, error: null }),
     from: vi.fn().mockReturnValue({ insert: mockInsert }),
-  } as unknown as ReturnType<typeof getSupabaseClient>);
+  } as unknown as Awaited<ReturnType<typeof getSupabaseServerClient>>);
 
   // Embeddings mock
   vi.mocked(getEmbeddings).mockReturnValue({

@@ -1,10 +1,9 @@
 // src/lib/crag/nodes.ts
 import type { RunnableConfig } from "@langchain/core/runnables";
+import type { SupabaseClient } from "@supabase/supabase-js";
 import type { CragState, GradedChunk, Decision, SendFn, NodeOutputSummary } from "./types";
 import { getAIClient, AI_MODEL } from "@/lib/ai-client";
 import { getEmbeddings } from "@/lib/embedClient";
-import { getSupabaseClient } from "@/lib/supabaseClient";
-import { getDemoWorkspaceIdOrThrow } from "@/lib/demoWorkspace";
 import { rewriteQuery } from "@/lib/queryRewrite";
 
 // ─── retrieve ────────────────────────────────────────────────────────────────
@@ -16,9 +15,14 @@ export async function retrieveNode(
   const send = (config.configurable?.send ?? (() => {})) as SendFn;
   send({ type: "node_started", node: "retrieve", ts: Date.now() });
 
-  const supabase = getSupabaseClient();
+  // supabase client is injected from the route handler via config.configurable,
+  // carrying the user's session so RLS can enforce workspace isolation.
+  const supabase = config.configurable?.supabase as SupabaseClient;
+  if (!supabase) throw new Error("supabase client not provided in config.configurable");
+
   const embeddings = getEmbeddings();
-  const workspaceId = getDemoWorkspaceIdOrThrow();
+  const workspaceId = state.workspaceId;
+  if (!workspaceId) throw new Error("workspaceId missing from CragState");
 
   const [embedding] = await embeddings.embedDocuments([state.activeQuery]);
   const { data: docs } = await supabase.rpc("match_documents", {
