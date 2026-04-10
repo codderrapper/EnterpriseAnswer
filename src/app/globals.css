@@ -28,7 +28,8 @@ body {
 html,
 body {
   height: 100%;
-  overflow: hidden; /* 禁止外层滚动 */
+  overflow-x: hidden;
+  overflow-y: auto;
   margin: 0;
   padding: 0;
 }

@@ -1,7 +1,7 @@
 "use client";
 
-import { FormEvent, useState } from "react";
 import useSWR from "swr";
+import { FormEvent, useState } from "react";
 
 type PromptItem = {
   id: number;
@@ -16,10 +16,19 @@ type PromptResp = {
   items: PromptItem[];
 };
 
-const fetcher = (url: string) => fetch(url).then((res) => res.json());
+const fetcher = async (url: string) => {
+  const res = await fetch(url);
+
+  if (!res.ok) {
+    const err = await res.json().catch(() => null);
+    throw new Error(err?.error || `请求失败 ${res.status}`);
+  }
+
+  return res.json() as Promise<PromptResp>;
+};
 
 export default function PromptsPage() {
-  const { data, mutate, isLoading } = useSWR<PromptResp>(
+  const { data, error, mutate, isLoading } = useSWR<PromptResp>(
     "/api/prompts?name=search_system",
     fetcher,
   );
@@ -75,29 +84,26 @@ export default function PromptsPage() {
   }
 
   return (
-    <main className="h-[100dvh] max-w-5xl mx-auto flex flex-col bg-gray-100 text-gray-900 border-x">
-      <header className="p-4 border-b bg-white flex items-center justify-between">
+    <main className="min-h-screen w-full flex flex-col bg-gray-100 text-gray-900">
+      <header className="space-y-3 border-b bg-white p-4">
         <div>
-          <h1 className="font-bold text-xl">Prompt 版本管理</h1>
-          <p className="text-xs text-gray-500 mt-1">用于切换系统 Prompt，支持版本回滚</p>
-        </div>
-        <div className="text-sm flex gap-3">
-          <a href="/" className="text-blue-600 hover:underline">
-            聊天工作台
-          </a>
-          <a href="/runs" className="text-blue-600 hover:underline">
-            运行历史
-          </a>
+          <h1 className="font-bold text-xl">Strategy</h1>
+          <p className="text-xs text-gray-500 mt-1">
+            管理问答系统策略版本，用于发布、激活与回滚检索回答策略
+          </p>
         </div>
       </header>
 
       <section className="p-4 space-y-4 overflow-y-auto">
         <form onSubmit={onCreate} className="bg-white border rounded p-3 space-y-2">
-          <div className="text-sm font-medium">新建版本（自动置为 active）</div>
+          <label htmlFor="prompt-content" className="block text-sm font-medium">
+            发布新策略版本（自动置为 active）
+          </label>
           <textarea
+            id="prompt-content"
             value={content}
             onChange={(e) => setContent(e.target.value)}
-            placeholder="输入系统 Prompt 内容"
+            placeholder="输入新的系统策略内容"
             className="w-full h-40 border rounded p-2 text-sm"
           />
           <button
@@ -107,6 +113,12 @@ export default function PromptsPage() {
             {creating ? "提交中..." : "发布新版本"}
           </button>
         </form>
+
+        {error && (
+          <div className="text-red-500 text-sm">
+            加载失败：{error instanceof Error ? error.message : String(error)}
+          </div>
+        )}
 
         <div className="bg-white border rounded overflow-hidden">
           <table className="w-full text-sm">
@@ -127,10 +139,10 @@ export default function PromptsPage() {
                   </td>
                 </tr>
               )}
-              {!isLoading && items.length === 0 && (
+              {!isLoading && !error && items.length === 0 && (
                 <tr>
                   <td className="px-3 py-3 text-gray-500" colSpan={5}>
-                    暂无 Prompt 版本
+                    暂无策略版本
                   </td>
                 </tr>
               )}
