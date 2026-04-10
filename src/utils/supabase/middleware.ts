@@ -27,16 +27,16 @@ export async function updateSession(request: NextRequest) {
     }
   );
 
-  // IMPORTANT: Avoid writing any logic between createServerClient and
-  // supabase.auth.getUser(). A simple mistake could make it very hard to debug
-  // issues with users being randomly logged out.
-
+  // Use getSession() instead of getUser() to avoid a network round-trip on every
+  // navigation. getSession() reads the JWT from the cookie directly (fast), while
+  // getUser() always hits the Supabase auth server (slow). For server-side auth
+  // validation use getUser(); for middleware routing checks getSession() is fine.
   const {
-    data: { user },
-  } = await supabase.auth.getUser();
+    data: { session },
+  } = await supabase.auth.getSession();
 
   if (
-    !user &&
+    !session &&
     !request.nextUrl.pathname.startsWith("/login") &&
     !request.nextUrl.pathname.startsWith("/auth") &&
     // allow public access to basic assets
