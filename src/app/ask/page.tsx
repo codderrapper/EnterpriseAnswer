@@ -4,6 +4,10 @@ import { useEffect, useLayoutEffect, useRef, useState } from "react";
 import Link from "next/link";
 import MarkdownRenderer from "@/components/MarkdownRenderer";
 import SourcesPanel from "@/components/SourcesPanel";
+import {
+  AUTO_FOLLOW_THRESHOLD_PX,
+  isNearBottom,
+} from "@/app/ask/scroll";
 import { useChatStore } from "@/store/chatStore";
 import type { Message } from "@/types/chat";
 
@@ -48,7 +52,9 @@ function ChatMessage({ msg }: { msg: Message }) {
 
 export default function AskPage() {
   const chatBoxRef = useRef<HTMLDivElement | null>(null);
+  const previousMessageCountRef = useRef(0);
   const [hasHydratedHistory, setHasHydratedHistory] = useState(false);
+  const [isAutoFollowEnabled, setIsAutoFollowEnabled] = useState(true);
 
   const {
     messages,
@@ -78,21 +84,49 @@ export default function AskPage() {
 
   useLayoutEffect(() => {
     const el = chatBoxRef.current;
-    if (!el) return;
+    if (!el || !isAutoFollowEnabled) return;
+
+    const hasNewMessageBatch = messages.length > previousMessageCountRef.current;
+    previousMessageCountRef.current = messages.length;
 
     requestAnimationFrame(() => {
-      el.scrollTo({ top: el.scrollHeight, behavior: "smooth" });
+      el.scrollTo({
+        top: el.scrollHeight,
+        behavior: hasNewMessageBatch && !isLoading ? "smooth" : "auto",
+      });
     });
-  }, [messages]);
+  }, [isAutoFollowEnabled, isLoading, messages]);
+
+  function handleChatScroll() {
+    const el = chatBoxRef.current;
+    if (!el) return;
+
+    setIsAutoFollowEnabled(
+      isNearBottom(
+        el.scrollTop,
+        el.clientHeight,
+        el.scrollHeight,
+        AUTO_FOLLOW_THRESHOLD_PX,
+      ),
+    );
+  }
+
+  function scrollToBottomAndResume() {
+    const el = chatBoxRef.current;
+    if (!el) return;
+
+    el.scrollTo({ top: el.scrollHeight, behavior: "smooth" });
+    setIsAutoFollowEnabled(true);
+  }
 
   async function handleSend() {
     await sendMessage();
   }
 
   return (
-    <main className="h-full overflow-hidden bg-slate-100 text-slate-900">
+    <main className="h-[calc(100vh-4rem)] overflow-hidden bg-slate-100 text-slate-900">
       <div className="grid h-full w-full min-h-0 grid-rows-[minmax(0,1fr)_220px] overflow-hidden lg:flex lg:flex-row">
-        <div className="flex min-h-0 min-w-0 flex-1 flex-col bg-slate-50">
+        <div className="relative flex min-h-0 min-w-0 flex-1 flex-col bg-slate-50">
           <header className="shrink-0 border-b border-slate-200 bg-white px-5 py-4">
             <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
               <div className="space-y-1">
@@ -112,12 +146,25 @@ export default function AskPage() {
 
           <section
             ref={chatBoxRef}
+            onScroll={handleChatScroll}
             className="flex-1 min-h-0 overflow-y-auto px-5 py-4 space-y-4"
           >
             {messages.map((message) => (
               <ChatMessage key={message.id} msg={message} />
             ))}
           </section>
+
+          {!isAutoFollowEnabled && (
+            <div className="pointer-events-none absolute inset-x-0 bottom-22 flex justify-center px-5">
+              <button
+                type="button"
+                onClick={scrollToBottomAndResume}
+                className="pointer-events-auto rounded-full border border-slate-300 bg-white px-4 py-2 text-sm font-medium text-slate-700 shadow-md hover:bg-slate-50"
+              >
+                回到底部
+              </button>
+            </div>
+          )}
 
           {isLoading && (
             <div className="shrink-0 px-5 pb-2 text-sm text-slate-500">

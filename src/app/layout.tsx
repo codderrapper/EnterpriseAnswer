@@ -24,9 +24,9 @@ export default function RootLayout({
             'ui-sans-serif, system-ui, -apple-system, Segoe UI, Roboto, Helvetica, Arial, "Apple Color Emoji", "Segoe UI Emoji"',
         }}
       >
-        <div className="flex h-screen flex-col overflow-hidden bg-slate-100 text-slate-900">
+        <div className="flex min-h-screen flex-col bg-slate-100 text-slate-900">
           <AppChrome />
-          <div className="flex-1 min-h-0">{children}</div>
+          <div className="flex-1">{children}</div>
         </div>
       </body>
     </html>

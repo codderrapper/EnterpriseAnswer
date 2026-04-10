@@ -19,7 +19,7 @@ export default function AppChrome() {
 
   return (
     <div className="sticky top-0 z-40 border-b border-slate-200 bg-white/95 backdrop-blur">
-      <div className="flex w-full items-center px-4 py-3 sm:px-6">
+      <div className="flex h-16 w-full items-center px-4 sm:px-6">
         <div className="min-w-0">
           <p className="text-[11px] font-semibold uppercase tracking-[0.22em] text-slate-500">
             Enterprise Knowledge Hub
