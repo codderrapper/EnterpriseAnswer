@@ -90,7 +90,7 @@ export default function AskPage() {
   }
 
   return (
-    <main className="h-full overflow-hidden bg-slate-100 text-slate-900">
+    <main className="h-[calc(100vh-4rem)] overflow-hidden bg-slate-100 text-slate-900">
       <div className="grid h-full w-full min-h-0 grid-rows-[minmax(0,1fr)_220px] overflow-hidden lg:flex lg:flex-row">
         <div className="flex min-h-0 min-w-0 flex-1 flex-col bg-slate-50">
           <header className="shrink-0 border-b border-slate-200 bg-white px-5 py-4">
