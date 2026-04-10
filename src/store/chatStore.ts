@@ -17,9 +17,6 @@ interface ChatState {
   steps: AgentStep[];
   isLoading: boolean;
 
-  input: string;
-  setInput: (v: string) => void;
-
   // 🧠 RAG 检索配置：由前端可视化面板控制
   topK: number; // 向量检索返回多少条文档片段
   threshold: number; // 相似度阈值
@@ -27,7 +24,7 @@ interface ChatState {
   setTopK: (k: number) => void;
   setThreshold: (t: number) => void;
 
-  sendMessage: () => Promise<void>;
+  sendMessage: (input: string) => Promise<void>;
 
   hydrateFromLocal: () => void;
 }
@@ -36,13 +33,10 @@ export const useChatStore = create<ChatState>((set, get) => ({
   messages: [],
   steps: [],
   isLoading: false,
-  input: "",
 
   // 默认配置：topK=5, 阈值=0.4，与你之前后端逻辑对齐
   topK: 5,
   threshold: 0.4,
-
-  setInput: (v) => set({ input: v }),
 
   setTopK: (k) =>
     set({
@@ -66,8 +60,8 @@ export const useChatStore = create<ChatState>((set, get) => ({
     }
   },
 
-  sendMessage: async () => {
-    const { input, isLoading, messages, topK, threshold } = get();
+  sendMessage: async (input: string) => {
+    const { isLoading, messages, topK, threshold } = get();
     const userInput = input.trim();
     if (!userInput || isLoading) return;
 
@@ -92,7 +86,6 @@ export const useChatStore = create<ChatState>((set, get) => ({
       messages: [...messages, userMessage, assistantMessage],
       steps: [],
       isLoading: true,
-      input: "",
     });
 
     const assistantId = assistantMessage.id;

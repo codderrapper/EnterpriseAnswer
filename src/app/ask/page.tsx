@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useLayoutEffect, useRef, useState } from "react";
+import { useEffect, useLayoutEffect, useRef, useState, memo } from "react";
 import Link from "next/link";
 import MarkdownRenderer from "@/components/MarkdownRenderer";
 import SourcesPanel from "@/components/SourcesPanel";
@@ -11,7 +11,11 @@ import {
 import { useChatStore } from "@/store/chatStore";
 import type { Message } from "@/types/chat";
 
-function ChatMessage({ msg }: { msg: Message }) {
+/**
+ * ⚡ 优化1：使用 React.memo 避免消息列表在输入时重复渲染。
+ * 因为输入框状态在父组件，如果不 memo，每打一个字都会触发所有历史消息的重绘。
+ */
+const ChatMessage = memo(function ChatMessage({ msg }: { msg: Message }) {
   const isAI = msg.role === "assistant";
 
   return (
@@ -48,6 +52,63 @@ function ChatMessage({ msg }: { msg: Message }) {
       )}
     </div>
   );
+});
+
+/**
+ * ⚡ 优化2：将输入框拆分为独立组件，实现状态下沉。
+ * 这样用户打字时，只有这个小组件在重新渲染，不会影响到上面的消息展示区域。
+ */
+function ChatInput({
+  onSend,
+  isLoading,
+}: {
+  onSend: (val: string) => Promise<void>;
+  isLoading: boolean;
+}) {
+  const [input, setInput] = useState("");
+
+  const handleSend = async () => {
+    const val = input.trim();
+    if (!val || isLoading) return;
+    await onSend(val);
+    setInput("");
+  };
+
+  return (
+    <footer className="shrink-0 border-t border-slate-200 bg-white px-5 py-4">
+      <div className="flex gap-3">
+        <label htmlFor="ask-question" className="sr-only">
+          问题输入框
+        </label>
+        <textarea
+          id="ask-question"
+          value={input}
+          onChange={(e) => setInput(e.target.value)}
+          onKeyDown={(e) => {
+            if (e.key === "Enter" && !e.shiftKey && !isLoading) {
+              e.preventDefault();
+              handleSend();
+            }
+          }}
+          placeholder="请输入问题..."
+          disabled={isLoading}
+          className="min-h-11 max-h-48 flex-1 resize-none rounded-xl border border-slate-300 bg-white px-3 py-2 text-sm outline-none ring-0 placeholder:text-slate-400 focus:border-slate-400 focus:ring-2 focus:ring-slate-200"
+        />
+        <button
+          type="button"
+          onClick={handleSend}
+          disabled={isLoading}
+          className={`h-11 rounded-xl px-4 text-sm font-medium text-white transition ${
+            isLoading
+              ? "cursor-not-allowed bg-slate-400"
+              : "bg-slate-900 hover:bg-slate-700"
+          }`}
+        >
+          {isLoading ? "思考中..." : "发送"}
+        </button>
+      </div>
+    </footer>
+  );
 }
 
 export default function AskPage() {
@@ -59,8 +120,6 @@ export default function AskPage() {
   const {
     messages,
     isLoading,
-    input,
-    setInput,
     sendMessage,
     hydrateFromLocal,
     threshold,
@@ -119,10 +178,6 @@ export default function AskPage() {
     setIsAutoFollowEnabled(true);
   }
 
-  async function handleSend() {
-    await sendMessage();
-  }
-
   return (
     <main className="h-[calc(100vh-4rem)] overflow-hidden bg-slate-100 text-slate-900">
       <div className="grid h-full w-full min-h-0 grid-rows-[minmax(0,1fr)_220px] overflow-hidden lg:flex lg:flex-row">
@@ -172,39 +227,7 @@ export default function AskPage() {
             </div>
           )}
 
-          <footer className="shrink-0 border-t border-slate-200 bg-white px-5 py-4">
-            <div className="flex gap-3">
-              <label htmlFor="ask-question" className="sr-only">
-                问题输入框
-              </label>
-              <textarea
-                id="ask-question"
-                value={input}
-                onChange={(e) => setInput(e.target.value)}
-                onKeyDown={(e) => {
-                  if (e.key === "Enter" && !e.shiftKey && !isLoading) {
-                    e.preventDefault();
-                    handleSend();
-                  }
-                }}
-                placeholder="请输入问题..."
-                disabled={isLoading}
-                className="min-h-11 max-h-48 flex-1 resize-none rounded-xl border border-slate-300 bg-white px-3 py-2 text-sm outline-none ring-0 placeholder:text-slate-400 focus:border-slate-400 focus:ring-2 focus:ring-slate-200"
-              />
-              <button
-                type="button"
-                onClick={handleSend}
-                disabled={isLoading}
-                className={`h-11 rounded-xl px-4 text-sm font-medium text-white transition ${
-                  isLoading
-                    ? "cursor-not-allowed bg-slate-400"
-                    : "bg-slate-900 hover:bg-slate-700"
-                }`}
-              >
-                {isLoading ? "思考中..." : "发送"}
-              </button>
-            </div>
-          </footer>
+          <ChatInput onSend={sendMessage} isLoading={isLoading} />
         </div>
 
         <aside className="flex min-h-0 w-full shrink-0 flex-col border-t border-slate-200 bg-slate-50 lg:w-[420px] lg:border-l lg:border-t-0">
