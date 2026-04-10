@@ -39,23 +39,25 @@ export default function DocumentsPage() {
   const totalPages = Math.max(1, Math.ceil(total / pageSize));
 
   return (
-    <main className="h-[100dvh] max-w-4xl mx-auto flex flex-col bg-gray-100 text-gray-900 border-x">
-      {/* 顶部标题 & 返回入口 */}
-      <header className="p-4 border-b bg-white flex items-center justify-between">
-        <h1 className="font-bold text-xl">文档管理</h1>
-        <Link href="/" className="text-sm text-blue-600 hover:underline">
-          ← 返回聊天
-        </Link>
+    <main className="min-h-screen w-full flex flex-col bg-gray-100 text-gray-900">
+      <header className="space-y-3 border-b bg-white p-4">
+        <div className="flex flex-wrap items-center justify-between gap-3">
+          <div>
+            <h1 className="font-bold text-xl">文档管理</h1>
+            <p className="text-xs text-gray-500 mt-1">企业知识接入与治理</p>
+          </div>
+        </div>
       </header>
 
       {/* 搜索 + 上传区域 */}
       <div className="p-4 space-y-3 bg-gray-50 border-b">
         <div className="flex items-center justify-between gap-3">
           <div className="flex-1">
-            <label className="block text-xs text-gray-500 mb-1">
+            <label htmlFor="document-search" className="block text-xs text-gray-500 mb-1">
               搜索文档名称
             </label>
             <input
+              id="document-search"
               value={search}
               onChange={(e) => {
                 setSearch(e.target.value);
@@ -121,13 +123,13 @@ export default function DocumentsPage() {
                   <tr key={doc.id} className="border-b last:border-b-0">
                     <td className="px-3 py-2 align-top">{doc.id}</td>
                     <td className="px-3 py-2 align-top max-w-xs">
-                      <a
+                      <Link
                         href={`/documents/${doc.id}`}
                         className="text-blue-600 hover:underline truncate inline-block max-w-xs"
                         title={doc.name}
                       >
                         {doc.name}
-                      </a>
+                      </Link>
                     </td>
                     <td className="px-3 py-2 align-top">
                       {doc.chunk_count}

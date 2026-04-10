@@ -12,6 +12,7 @@ import "katex/dist/katex.min.css";
 
 interface Props {
   content: string;
+  tone?: "default" | "inverse";
 }
 
 /** 🧠 工具1：去除最外层 ```markdown 包裹 */
@@ -33,9 +34,13 @@ function normalizeTasks(md: string) {
 }
 
 /** ✨ 主组件：Markdown 渲染器 */
-export default function MarkdownRenderer({ content }: Props) {
+export default function MarkdownRenderer({
+  content,
+  tone = "default",
+}: Props) {
   // 1️⃣ 清洗 Markdown 内容
   const cleaned = normalizeTasks(unwrapTopFence(content));
+  const isInverse = tone === "inverse";
 
   return (
     <div
@@ -86,7 +91,13 @@ export default function MarkdownRenderer({ content }: Props) {
 
           // 💬 引用块
           blockquote: ({ children }) => (
-            <blockquote className="border-l-4 border-blue-500 bg-blue-50 px-4 py-2 rounded-md text-gray-700 my-4">
+            <blockquote
+              className={`my-4 rounded-md border-l-4 px-4 py-2 ${
+                isInverse
+                  ? "border-white/70 bg-white/10 text-white/90"
+                  : "border-blue-500 bg-blue-50 text-gray-700"
+              }`}
+            >
               {children}
             </blockquote>
           ),
@@ -102,7 +113,13 @@ export default function MarkdownRenderer({ content }: Props) {
               typeof className === "string" && /language-/.test(className);
             if (!isBlock) {
               return (
-                <code className="bg-gray-100 text-red-600 px-1 py-0.5 rounded">
+                <code
+                  className={`rounded px-1 py-0.5 ${
+                    isInverse
+                      ? "bg-white/15 text-white"
+                      : "bg-gray-100 text-red-600"
+                  }`}
+                >
                   {children}
                 </code>
               );
@@ -150,19 +167,31 @@ export default function MarkdownRenderer({ content }: Props) {
 
           // 📋 列表
           ul: ({ children }) => (
-            <ul className="list-disc pl-6 space-y-1 text-gray-800">
+            <ul
+              className={`list-disc pl-6 space-y-1 ${
+                isInverse ? "text-white" : "text-gray-800"
+              }`}
+            >
               {children}
             </ul>
           ),
           ol: ({ children }) => (
-            <ol className="list-decimal pl-6 space-y-1 text-gray-800">
+            <ol
+              className={`list-decimal pl-6 space-y-1 ${
+                isInverse ? "text-white" : "text-gray-800"
+              }`}
+            >
               {children}
             </ol>
           ),
           li: ({ children }) => <li className="leading-relaxed">{children}</li>,
 
           // 🔤 段落
-          p: ({ children }) => <p className="my-2 text-gray-800">{children}</p>,
+          p: ({ children }) => (
+            <p className={`my-2 ${isInverse ? "text-white" : "text-gray-800"}`}>
+              {children}
+            </p>
+          ),
 
           // ➖ 分割线
           hr: () => <hr className="my-4 border-gray-300" />,

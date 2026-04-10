@@ -7,6 +7,7 @@
 
 "use client";
 
+import Link from "next/link";
 import useSWR from "swr";
 import { useMemo, useState } from "react";
 
@@ -43,6 +44,9 @@ type RunsResp = {
   pageSize: number;
 };
 
+type RunKind = "ok" | "empty" | "slow" | "fail";
+type ComputedRun = RunListItem & { _kind: RunKind };
+
 const fetcher = (url: string) => fetch(url).then((res) => res.json());
 
 function ms(v: number | null | undefined) {
@@ -68,7 +72,7 @@ function toLocalTime(ts: string) {
 function StatusPill({
   kind,
 }: {
-  kind: "ok" | "empty" | "slow" | "fail";
+  kind: RunKind;
 }) {
   const map: Record<typeof kind, { text: string; cls: string }> = {
     ok: { text: "OK", cls: "bg-green-50 text-green-700 border-green-200" },
@@ -91,7 +95,7 @@ export default function RunsPage() {
   const query = `/api/runs?page=${page}&pageSize=20`;
   const { data, error, isLoading } = useSWR<RunsResp>(query, fetcher);
 
-  const items = data?.items ?? [];
+  const items = useMemo(() => data?.items ?? [], [data?.items]);
   const total = data?.total ?? 0;
   const pageSize = data?.pageSize ?? 20;
   const totalPages = Math.max(1, Math.ceil(total / pageSize));
@@ -101,13 +105,13 @@ export default function RunsPage() {
   // - empty：matched_count=0 或 best_similarity < threshold（如果 best_similarity 有）
   // - slow：duration_ms >= 2000（你可以调整阈值）
   // - ok：其它
-  const computed = useMemo(() => {
+  const computed = useMemo<ComputedRun[]>(() => {
     return items.map((r) => {
       const matched = r.matched_count ?? 0;
       const dur = r.duration_ms ?? null;
       const hasAnswer = typeof r.answer === "string" && r.answer.trim().length > 0;
 
-      let kind: "ok" | "empty" | "slow" | "fail" = "ok";
+      let kind: RunKind = "ok";
 
       if (!hasAnswer && (dur == null || dur < 50)) {
         kind = "fail";
@@ -138,28 +142,13 @@ export default function RunsPage() {
   };
 
   return (
-    <main className="h-[100dvh] max-w-6xl mx-auto flex flex-col bg-gray-100 text-gray-900 border-x">
-      <header className="p-4 border-b bg-white flex items-center justify-between">
+    <main className="min-h-screen w-full flex flex-col bg-gray-100 text-gray-900">
+      <header className="space-y-3 border-b bg-white p-4">
         <div>
           <h1 className="font-bold text-xl">运行历史</h1>
           <div className="text-xs text-gray-500 mt-1">
             轻量观测台：状态 / 命中 / 耗时 / TTFT / Retrieve / LLM / request_id
           </div>
-        </div>
-
-        <div className="flex items-center gap-3 text-sm">
-          <a href="/" className="text-blue-600 hover:underline">
-            聊天工作台
-          </a>
-          <a href="/experiments" className="text-blue-600 hover:underline">
-            实验面板
-          </a>
-          <a href="/prompts" className="text-blue-600 hover:underline">
-            Prompt 管理
-          </a>
-          <a href="/documents" className="text-blue-600 hover:underline">
-            文档管理
-          </a>
         </div>
       </header>
 
@@ -168,7 +157,7 @@ export default function RunsPage() {
 
         {error && (
           <div className="text-red-500 text-sm">
-            加载失败：{String((error as any)?.message ?? error)}
+            加载失败：{error instanceof Error ? error.message : String(error)}
           </div>
         )}
 
@@ -216,7 +205,7 @@ export default function RunsPage() {
 
                       <td className="px-3 py-2 align-top">
                         <div className="flex flex-col gap-1">
-                          <StatusPill kind={(run as any)._kind} />
+                          <StatusPill kind={run._kind} />
                           {/* 小提示：hover 看预览 */}
                           <span className="text-[11px] text-gray-400" title={answerPreview}>
                             悬停看答复
@@ -297,12 +286,12 @@ export default function RunsPage() {
                       </td>
 
                       <td className="px-3 py-2 align-top text-center">
-                        <a
+                        <Link
                           href={`/runs/${run.id}`}
                           className="text-xs text-blue-600 hover:underline"
                         >
                           详情
-                        </a>
+                        </Link>
                       </td>
                     </tr>
                   );

@@ -1,7 +1,7 @@
-import AgentPageContent from "./components/AgentPageContent";
+import { redirect } from "next/navigation";
 
-export const metadata = { title: "CRAG Agent" };
+export const metadata = { title: "Workflow Lab" };
 
 export default function AgentPage() {
-  return <AgentPageContent />;
+  redirect("/debug/workflow");
 }
