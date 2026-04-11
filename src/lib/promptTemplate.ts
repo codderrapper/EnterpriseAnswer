@@ -10,13 +10,16 @@ export type PromptTemplateRow = {
   content: string;
   is_active: boolean;
   created_at?: string;
+  // 🧠 企业级增强：策略绑定检索参数
+  top_k: number | null;
+  threshold: number | null;
 };
 
 export async function getPromptTemplateByVersion(version: number) {
   const supabase = getSupabaseClient();
   const { data, error } = await supabase
     .from("prompt_templates")
-    .select("id,name,version,content,is_active,created_at")
+    .select("id,name,version,content,is_active,created_at,top_k,threshold")
     .eq("version", version)
     .limit(1)
     .maybeSingle();
@@ -32,7 +35,7 @@ export async function getActivePromptTemplate(name = "search_system") {
   const supabase = getSupabaseClient();
   const { data, error } = await supabase
     .from("prompt_templates")
-    .select("id,name,version,content,is_active,created_at")
+    .select("id,name,version,content,is_active,created_at,top_k,threshold")
     .eq("name", name)
     .eq("is_active", true)
     .order("version", { ascending: false })

@@ -10,25 +10,7 @@ const AgentGraph = dynamic(() => import("./AgentGraph"), { ssr: false });
 
 export default function AgentPageContent() {
   return (
-    <div className="flex h-screen flex-col overflow-hidden bg-gray-100 text-gray-900">
-      <div className="border-b border-gray-200 bg-white px-4 py-3">
-        <div className="flex flex-wrap items-center justify-between gap-3">
-          <div>
-            <h1 className="text-sm font-semibold text-gray-900">Workflow Lab</h1>
-            <p className="text-xs text-gray-500">
-              Debug 视角下的实验性工作流与执行细节视图
-            </p>
-          </div>
-          <AppShellNav
-            secondaryItems={[
-              { href: "/debug", label: "Debug" },
-              { href: "/debug/workflow", label: "Workflow Lab" },
-              { href: "/debug/search", label: "Search Lab" },
-            ]}
-          />
-        </div>
-      </div>
-
+    <div className="flex h-[calc(100vh-4rem)] flex-col overflow-hidden bg-gray-100 text-gray-900">
       <div className="flex flex-1 min-h-0 overflow-hidden bg-gray-950 text-white">
         {/* 左侧：ReactFlow DAG */}
         <div className="flex w-1/2 flex-col border-r border-gray-800">

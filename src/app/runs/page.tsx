@@ -286,12 +286,20 @@ export default function RunsPage() {
                       </td>
 
                       <td className="px-3 py-2 align-top text-center">
-                        <Link
-                          href={`/runs/${run.id}`}
-                          className="text-xs text-blue-600 hover:underline"
-                        >
-                          详情
-                        </Link>
+                        <div className="flex flex-col gap-2">
+                          <Link
+                            href={`/runs/${run.id}`}
+                            className="text-xs text-blue-600 hover:underline"
+                          >
+                            详情
+                          </Link>
+                          <Link
+                            href={`/debug/search?question=${encodeURIComponent(run.question)}&topK=${run.topk}&threshold=${run.threshold}`}
+                            className="text-xs text-emerald-600 hover:underline font-medium"
+                          >
+                            实验室调试
+                          </Link>
+                        </div>
                       </td>
                     </tr>
                   );

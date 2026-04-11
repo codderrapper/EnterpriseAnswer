@@ -3,7 +3,7 @@
 import { usePathname } from "next/navigation";
 import AppShellNav from "@/components/AppShellNav";
 
-const hiddenPrimaryNavPrefixes = ["/debug/workflow", "/debug/search"];
+const hiddenPrimaryNavPrefixes: string[] = [];
 const hiddenPrimaryNavExact = ["/agent"];
 
 export default function AppChrome() {
@@ -17,6 +17,16 @@ export default function AppChrome() {
     return null;
   }
 
+  // 🧠 企业级优化：在 Debug 相关路径下，自动展示完整的实验室二级菜单
+  const isDebugPath = pathname.startsWith("/debug");
+  const secondaryItems = isDebugPath
+    ? [
+        { href: "/debug", label: "Overview" },
+        { href: "/debug/workflow", label: "Workflow Lab" },
+        { href: "/debug/search", label: "Search Lab" },
+      ]
+    : [{ href: "/debug", label: "Debug" }];
+
   return (
     <div className="sticky top-0 z-40 border-b border-slate-200 bg-white/95 backdrop-blur">
       <div className="flex h-16 w-full items-center px-4 sm:px-6">
@@ -26,7 +36,7 @@ export default function AppChrome() {
           </p>
         </div>
         <div className="ml-4 min-w-0 flex-1">
-          <AppShellNav secondaryItems={[{ href: "/debug", label: "Debug" }]} />
+          <AppShellNav secondaryItems={secondaryItems} />
         </div>
       </div>
     </div>

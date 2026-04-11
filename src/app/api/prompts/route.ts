@@ -8,6 +8,8 @@ const PromptPostSchema = z.object({
   name: z.string().trim().default("search_system"),
   content: z.string().trim().min(1, "content is required"),
   isActive: z.boolean().default(true),
+  topK: z.number().int().min(1).max(20).nullish(),
+  threshold: z.number().min(0).max(1).nullish(),
 });
 
 const PromptPatchSchema = z.object({
@@ -24,7 +26,7 @@ export async function GET(req: NextRequest) {
     const supabase = await getSupabaseServerClient();
     let query = supabase
       .from("prompt_templates")
-      .select("id,name,version,content,is_active,created_at")
+      .select("id,name,version,content,is_active,created_at,top_k,threshold")
       .eq("name", name)
       .order("version", { ascending: false })
       .limit(50);
@@ -62,7 +64,7 @@ export async function POST(req: Request) {
       );
     }
 
-    const { name, content, isActive } = parsed.data;
+    const { name, content, isActive, topK, threshold } = parsed.data;
 
     const supabase = await getSupabaseServerClient();
     const { data: latest, error: latestError } = await supabase
@@ -93,8 +95,10 @@ export async function POST(req: Request) {
         version: nextVersion,
         content,
         is_active: isActive,
+        top_k: topK,
+        threshold: threshold,
       })
-      .select("id,name,version,content,is_active,created_at")
+      .select("id,name,version,content,is_active,created_at,top_k,threshold")
       .single();
 
     if (error) {

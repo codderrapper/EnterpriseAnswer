@@ -230,13 +230,14 @@ export default function AskPage() {
           <ChatInput onSend={sendMessage} isLoading={isLoading} />
         </div>
 
-        <aside className="flex min-h-0 w-full shrink-0 flex-col border-t border-slate-200 bg-slate-50 lg:w-[420px] lg:border-l lg:border-t-0">
+        {/* ⚡ 优化：移除右侧常驻的 SourcesPanel，腾出空间给未来的文档详情预览 */}
+        <aside className="hidden min-h-0 w-full shrink-0 flex-col border-t border-slate-200 bg-slate-50 lg:flex lg:w-[320px] lg:border-l lg:border-t-0">
           <div className="shrink-0 border-b border-slate-200 bg-white px-5 py-4">
-            <div className="text-sm font-medium text-slate-900">Sources</div>
-            <div className="text-xs text-slate-500">Latest retrieved context</div>
+            <div className="text-sm font-medium text-slate-900">详情</div>
+            <div className="text-xs text-slate-500">点击来源查看文档原文</div>
           </div>
-          <div className="flex-1 min-h-0 overflow-y-auto p-4">
-            <SourcesPanel sources={activeSources} threshold={threshold} />
+          <div className="flex-1 items-center justify-center flex p-4 text-slate-400 text-sm italic">
+            暂无详情
           </div>
         </aside>
       </div>

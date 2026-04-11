@@ -26,8 +26,8 @@ const SearchInputSchema = z.object({
   history: z
     .array(z.object({ role: z.enum(["user", "assistant"]), content: z.string() }))
     .optional(),
-  topK: z.number().int().min(1).max(20).default(5),
-  threshold: z.number().min(0).max(1).default(0.4),
+  topK: z.number().int().min(1).max(20).nullish(),
+  threshold: z.number().min(0).max(1).nullish(),
   model: z.string().trim().min(1).optional(),
   promptVersion: z.number().int().finite().nullish(),
   rewrite: z.boolean().default(false),
@@ -65,17 +65,27 @@ export async function POST(req: Request) {
     const {
       question,
       history,
-      topK: safeTopK,
-      threshold: safeThreshold,
+      topK,
+      threshold,
       model,
       promptVersion: safePromptVersion,
       rewrite: useRewrite,
       rerank: useRerank,
     } = parsed.data;
 
+    const supabase = await getSupabaseServerClient();
+
+    // ── 企业级特性：策略驱动参数 ──
+    // 优先加载 Strategy (Prompt Template)，获取其绑定的最优参数
+    const template = safePromptVersion
+      ? await getPromptTemplateByVersion(safePromptVersion)
+      : await getActivePromptTemplate("search_system");
+
+    // 参数优先级：请求显式传参 > 策略绑定参数 > 系统硬编码默认值
+    const safeTopK = topK ?? template?.top_k ?? 5;
+    const safeThreshold = threshold ?? template?.threshold ?? 0.4;
     const safeModel = model ?? AI_MODEL;
 
-    const supabase = await getSupabaseServerClient();
     const workspaceId = await resolveWorkspaceId(supabase);
     const limit = enforceSearchRateLimit(workspaceId);
     if (!limit.ok) {
@@ -394,32 +404,18 @@ export async function POST(req: Request) {
           let systemPrompt = DEFAULT_SYSTEM_PROMPT;
           let promptVersionUsed: number | null = null;
 
-          sendStep("prompt", "加载 Prompt 模板", "running");
-          try {
-            const template = safePromptVersion
-              ? await getPromptTemplateByVersion(safePromptVersion)
-              : await getActivePromptTemplate("search_system");
-
-            if (template?.content?.trim()) {
-              systemPrompt = template.content.trim();
-              promptVersionUsed = template.version;
-              sendStep(
-                "prompt",
-                "加载 Prompt 模板",
-                "done",
-                `version=${template.version}${template.is_active ? "(active)" : ""}`,
-              );
-            } else {
-              sendStep("prompt", "加载 Prompt 模板", "done", "未找到模板，使用默认 Prompt");
-            }
-          } catch (err: any) {
+          sendStep("prompt", "应用策略配置", "running");
+          if (template?.content?.trim()) {
+            systemPrompt = template.content.trim();
+            promptVersionUsed = template.version;
             sendStep(
               "prompt",
-              "加载 Prompt 模板",
-              "error",
-              err?.message || "读取模板失败，回退默认 Prompt",
+              "应用策略配置",
+              "done",
+              `已载入策略 v${template.version} (Threshold: ${safeThreshold})`,
             );
-            log("prompt_template_error", { message: err?.message });
+          } else {
+            sendStep("prompt", "应用策略配置", "done", "使用系统默认策略");
           }
 
           const historyMessages =
