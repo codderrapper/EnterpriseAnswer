@@ -2,14 +2,19 @@
 
 import { useEffect, useLayoutEffect, useRef, useState, memo } from "react";
 import Link from "next/link";
-import MarkdownRenderer from "@/components/MarkdownRenderer";
-import SourcesPanel from "@/components/SourcesPanel";
+import dynamic from "next/dynamic";
 import {
   AUTO_FOLLOW_THRESHOLD_PX,
   isNearBottom,
 } from "@/app/ask/scroll";
 import { useChatStore } from "@/store/chatStore";
 import type { Message } from "@/types/chat";
+
+// ⚡ 优化：异步加载重型 Markdown 渲染器，提升页面切换速度
+const MarkdownRenderer = dynamic(() => import("@/components/MarkdownRenderer"), {
+  ssr: false,
+  loading: () => <div className="h-6 w-32 animate-pulse rounded bg-slate-100" />,
+});
 
 /**
  * ⚡ 优化1：使用 React.memo 避免消息列表在输入时重复渲染。
