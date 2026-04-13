@@ -13,7 +13,7 @@ describe("workflowRuntimeStore", () => {
   });
 
   it("applies evidence event: populates retrievedDocs", () => {
-    const docs = [{ id: "1", snippet: "test content", similarity: 0.9 }];
+    const docs = [{ id: "1", content: "test content", similarity: 0.9 }];
     useWorkflowRuntimeStore.getState().applyEvidenceEvent("retrieved", docs);
     expect(useWorkflowRuntimeStore.getState().retrievedDocs).toHaveLength(1);
     expect(useWorkflowRuntimeStore.getState().retrievedDocs[0].id).toBe("1");

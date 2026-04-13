@@ -2,6 +2,7 @@
 "use client";
 import { create } from "zustand";
 import type { WorkflowRoute } from "@/features/knowledge-workflow/server/types";
+import type { WorkflowEvent } from "@/features/knowledge-workflow/server/events";
 
 export type TraceNode = {
   name: string;
@@ -14,7 +15,7 @@ export type EvidenceItem = {
   documentId?: number;
   similarity?: number;
   relevance?: string;
-  snippet: string;
+  content: string;  // was "snippet", renamed to match EvidenceDoc.content
 };
 
 export type VerificationResult = {
@@ -25,7 +26,7 @@ export type VerificationResult = {
 
 interface WorkflowRuntimeState {
   route: WorkflowRoute | null;
-  events: unknown[];
+  events: WorkflowEvent[];
   traceNodes: TraceNode[];
   retrievedDocs: EvidenceItem[];
   rerankedDocs: EvidenceItem[];
@@ -40,7 +41,7 @@ interface WorkflowRuntimeState {
 
 const initialState = {
   route: null as WorkflowRoute | null,
-  events: [] as unknown[],
+  events: [] as WorkflowEvent[],
   traceNodes: [] as TraceNode[],
   retrievedDocs: [] as EvidenceItem[],
   rerankedDocs: [] as EvidenceItem[],
@@ -54,7 +55,12 @@ export const useWorkflowRuntimeStore = create<WorkflowRuntimeState>((set) => ({
   applyRouteEvent: (route, reason) =>
     set((s) => ({
       route,
-      events: [...s.events, { type: "data-route", data: { kind: "route_decided", route, reason } }],
+      events: [...s.events, {
+        type: "data-route" as const,
+        ts: Date.now(),
+        requestId: "",
+        data: { kind: "route_decided", route, reason },
+      }],
     })),
 
   applyEvidenceEvent: (stage, documents) =>
@@ -67,7 +73,12 @@ export const useWorkflowRuntimeStore = create<WorkflowRuntimeState>((set) => ({
             : { selectedDocs: documents };
       return {
         ...update,
-        events: [...s.events, { type: "data-evidence", data: { kind: "evidence_updated", stage, documents } }],
+        events: [...s.events, {
+          type: "data-evidence" as const,
+          ts: Date.now(),
+          requestId: "",
+          data: { kind: "evidence_updated", stage, documents },
+        }],
       };
     }),
 
