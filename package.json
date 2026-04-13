@@ -19,6 +19,7 @@
     "@langchain/openai": "^1.0.0",
     "@supabase/ssr": "^0.8.0",
     "@supabase/supabase-js": "^2.77.0",
+    "ai": "^6.0.158",
     "highlight.js": "^11.11.1",
     "katex": "^0.16.25",
     "langchain": "^1.0.2",

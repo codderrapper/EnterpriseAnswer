@@ -1,3 +1,4 @@
+// @deprecated: This route is being phased out. New code should use /api/chat instead.
 import { NextResponse } from "next/server";
 import { z } from "zod";
 import { getSupabaseServerClient } from "@/lib/supabaseServer";
