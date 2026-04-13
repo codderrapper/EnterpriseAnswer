@@ -25,31 +25,40 @@ const WorkflowStateAnnotation = Annotation.Root({
   finalAnswer:        Annotation<string>(),
 });
 
+type NodeFn = (
+  state: typeof WorkflowStateAnnotation.State,
+) => Promise<Partial<typeof WorkflowStateAnnotation.State>>;
+
 // Routing after routeTask
-function routeAfterTask(state: typeof WorkflowStateAnnotation.State): "retrieveEvidence" | "fallback" {
-  if (state.route === "fallback") return "fallback";
-  return "retrieveEvidence";
+function routeAfterTask(
+  state: typeof WorkflowStateAnnotation.State,
+): "retrieveEvidence" | "rewriteQuery" | "fallback" {
+  if (state.route === "fast_qa") return "retrieveEvidence";
+  if (state.route === "workflow_qa") return "rewriteQuery";
+  return "retrieveEvidence"; // default
 }
 
 const workflow = new StateGraph(WorkflowStateAnnotation)
-  .addNode("initRun",          initRun          as never)
-  .addNode("quickRetrieve",    quickRetrieve    as never)
-  .addNode("routeTask",        routeTask        as never)
-  .addNode("rewriteQuery",     rewriteQuery     as never)
-  .addNode("retrieveEvidence", retrieveEvidence as never)
-  .addNode("rerankEvidence",   rerankEvidence   as never)
-  .addNode("gradeEvidence",    gradeEvidence    as never)
-  .addNode("generateAnswer",   generateAnswer   as never)
-  .addNode("verifyGrounding",  verifyGrounding  as never)
-  .addNode("fallback",         fallback         as never)
-  .addNode("finalizeRun",      finalizeRun      as never)
+  .addNode("initRun",          initRun          as NodeFn)
+  .addNode("quickRetrieve",    quickRetrieve    as NodeFn)
+  .addNode("routeTask",        routeTask        as NodeFn)
+  .addNode("rewriteQuery",     rewriteQuery     as NodeFn)
+  .addNode("retrieveEvidence", retrieveEvidence as NodeFn)
+  .addNode("rerankEvidence",   rerankEvidence   as NodeFn)
+  .addNode("gradeEvidence",    gradeEvidence    as NodeFn)
+  .addNode("generateAnswer",   generateAnswer   as NodeFn)
+  .addNode("verifyGrounding",  verifyGrounding  as NodeFn)
+  .addNode("fallback",         fallback         as NodeFn)
+  .addNode("finalizeRun",      finalizeRun      as NodeFn)
   .addEdge(START, "initRun")
   .addEdge("initRun", "quickRetrieve")
   .addEdge("quickRetrieve", "routeTask")
   .addConditionalEdges("routeTask", routeAfterTask, {
     retrieveEvidence: "retrieveEvidence",
+    rewriteQuery: "rewriteQuery",
     fallback: "fallback",
   })
+  .addEdge("rewriteQuery", "retrieveEvidence")
   .addEdge("retrieveEvidence", "rerankEvidence")
   .addConditionalEdges("rerankEvidence", (state) => {
     return state.route === "workflow_qa" ? "gradeEvidence" : "generateAnswer";
@@ -59,7 +68,13 @@ const workflow = new StateGraph(WorkflowStateAnnotation)
   })
   .addEdge("gradeEvidence", "generateAnswer")
   .addEdge("generateAnswer", "verifyGrounding")
-  .addEdge("verifyGrounding", "finalizeRun")
+  .addConditionalEdges("verifyGrounding", (state) =>
+    state.route === "fallback" ? "fallback" : "finalizeRun",
+    {
+      fallback: "fallback",
+      finalizeRun: "finalizeRun",
+    }
+  )
   .addEdge("fallback", "finalizeRun")
   .addEdge("finalizeRun", END);
 
