@@ -7,7 +7,7 @@
  *   - POST { messages } to /api/chat
  *   - Parse the UI-message-stream SSE response
  *   - Build text content from UIMessage parts for rendering
- *   - Forward data-route / data-evidence chunks to workflowRuntimeStore
+ *   - Forward data-route / data-evidence / data-node / data-verification chunks to workflowRuntimeStore
  */
 
 import { useCallback, useRef, useState } from "react";
@@ -15,7 +15,7 @@ import { generateId, uiMessageChunkSchema } from "ai";
 import { parseJsonEventStream } from "@ai-sdk/provider-utils";
 import type { UIMessageChunk } from "ai";
 import { useWorkflowRuntimeStore } from "@/features/knowledge-workflow/store/workflowRuntimeStore";
-import type { EvidenceItem } from "@/features/knowledge-workflow/store/workflowRuntimeStore";
+import type { EvidenceItem, TraceNode, VerificationResult } from "@/features/knowledge-workflow/store/workflowRuntimeStore";
 import type { WorkflowRoute } from "@/features/knowledge-workflow/server/types";
 
 /** Simplified message shape for rendering. */
@@ -158,6 +158,8 @@ export function useChat({ api = "/api/chat", onError }: UseChatOptions = {}): Us
 type WorkflowStoreActions = {
   applyRouteEvent: (route: WorkflowRoute, reason: string) => void;
   applyEvidenceEvent: (stage: "retrieved" | "reranked" | "selected", documents: EvidenceItem[]) => void;
+  applyNodeEvent: (node: string, status: TraceNode["status"]) => void;
+  applyVerificationEvent: (result: VerificationResult) => void;
 };
 
 /**
@@ -182,6 +184,20 @@ function handleDataChunk(
     const documents = d.documents as EvidenceItem[] | undefined;
     if (stage && Array.isArray(documents)) {
       store.applyEvidenceEvent(stage, documents);
+    }
+  } else if (type === "data-node") {
+    const node = d.node as string | undefined;
+    const status = d.status as TraceNode["status"] | undefined;
+    if (node && status) {
+      store.applyNodeEvent(node, status);
+    }
+  } else if (type === "data-verification") {
+    if (typeof d.grounded === "boolean" && typeof d.reason === "string") {
+      store.applyVerificationEvent({
+        grounded: d.grounded,
+        reason: d.reason,
+        unsupportedClaims: d.unsupportedClaims as number | undefined,
+      });
     }
   }
 }

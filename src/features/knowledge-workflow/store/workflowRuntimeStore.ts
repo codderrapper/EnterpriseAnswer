@@ -36,6 +36,8 @@ interface WorkflowRuntimeState {
   // Actions
   applyRouteEvent: (route: WorkflowRoute, reason: string) => void;
   applyEvidenceEvent: (stage: "retrieved" | "reranked" | "selected", documents: EvidenceItem[]) => void;
+  applyNodeEvent: (node: string, status: TraceNode["status"]) => void;
+  applyVerificationEvent: (result: VerificationResult) => void;
   reset: () => void;
 }
 
@@ -81,6 +83,41 @@ export const useWorkflowRuntimeStore = create<WorkflowRuntimeState>((set) => ({
         }],
       };
     }),
+
+  applyNodeEvent: (node, status) =>
+    set((s) => {
+      // Update existing node entry or append a new one
+      const existingIdx = s.traceNodes.findIndex((n) => n.name === node);
+      const updatedNode: TraceNode = {
+        name: node,
+        status,
+        ...(status === "done" ? { completedAt: Date.now() } : {}),
+      };
+      const traceNodes =
+        existingIdx >= 0
+          ? s.traceNodes.map((n, i) => (i === existingIdx ? updatedNode : n))
+          : [...s.traceNodes, updatedNode];
+      return {
+        traceNodes,
+        events: [...s.events, {
+          type: "data-node" as const,
+          ts: Date.now(),
+          requestId: "",
+          data: { node, status },
+        }],
+      };
+    }),
+
+  applyVerificationEvent: (result) =>
+    set((s) => ({
+      verification: result,
+      events: [...s.events, {
+        type: "data-verification" as const,
+        ts: Date.now(),
+        requestId: "",
+        data: result as Record<string, unknown>,
+      }],
+    })),
 
   reset: () => set(initialState),
 }));

@@ -1,4 +1,7 @@
 // src/app/agent/components/AgentChat.tsx
+// @deprecated This component uses the legacy useAgentStore pattern and should not
+// evolve further. The canonical pattern is in src/features/chat/ (useChat hook +
+// workflowRuntimeStore). New chat UI work should extend that instead.
 "use client";
 
 import { useAgentStore } from "@/store/agentStore";

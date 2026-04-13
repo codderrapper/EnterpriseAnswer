@@ -1,4 +1,7 @@
 // src/app/agent/components/NodeDetailPanel.tsx
+// @deprecated This component uses the legacy useAgentStore pattern and should not
+// evolve further. The canonical pattern is in src/features/chat/ (useChat hook +
+// workflowRuntimeStore). New node/trace UI work should extend that instead.
 // 点击 DAG 节点后展示该节点的执行详情。
 // 每种节点类型有专属展示——这是让面试官感受到"工程深度"的关键组件：
 // gradeDocuments 展示 per-chunk 评分表，rewriteQuery 展示改写前后对比。
