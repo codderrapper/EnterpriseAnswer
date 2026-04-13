@@ -1,6 +1,6 @@
 # Unified Knowledge Workflow Phase 1 Implementation Plan
 
-> **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
+> **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [x]`) syntax for tracking.
 
 **Goal:** 将当前分裂的 `/api/search` 与 `/api/agent` 收敛为一个统一的 Knowledge Workflow Graph 主链路，并同步收口目录边界、流式协议与前端运行时状态。
 
@@ -96,7 +96,7 @@
 - Create: `src/features/chat/store/chatRuntimeStore.ts`
 - Create: `src/features/knowledge-workflow/store/workflowRuntimeStore.ts`
 
-- [ ] **Step 1: Create the new feature-private type definitions**
+- [x] **Step 1: Create the new feature-private type definitions**
 
 目标：先固定业务模块落点，不再让 workflow 新代码继续进入 `src/lib`。
 
@@ -113,7 +113,7 @@ export type EvidenceDoc = {
 };
 ```
 
-- [ ] **Step 2: Create the first workflow state model**
+- [x] **Step 2: Create the first workflow state model**
 
 ```ts
 // src/features/knowledge-workflow/server/state.ts
@@ -133,7 +133,7 @@ export type WorkflowState = {
 };
 ```
 
-- [ ] **Step 3: Create the stream event contracts**
+- [x] **Step 3: Create the stream event contracts**
 
 ```ts
 // src/features/knowledge-workflow/server/events.ts
@@ -146,7 +146,7 @@ export type WorkflowEvent =
   | { type: "data-clarification"; ts: number; requestId: string; data: Record<string, unknown> };
 ```
 
-- [ ] **Step 4: Create the graph entry skeleton**
+- [x] **Step 4: Create the graph entry skeleton**
 
 ```ts
 // src/features/knowledge-workflow/server/graph.ts
@@ -159,7 +159,7 @@ export function createKnowledgeWorkflowGraph() {
 }
 ```
 
-- [ ] **Step 5: Create the feature-private store skeletons**
+- [x] **Step 5: Create the feature-private store skeletons**
 
 ```ts
 // src/features/chat/store/chatRuntimeStore.ts
@@ -180,12 +180,12 @@ export const useWorkflowRuntimeStore = create(() => ({
 }));
 ```
 
-- [ ] **Step 6: Run typecheck to verify the new boundaries compile**
+- [x] **Step 6: Run typecheck to verify the new boundaries compile**
 
 Run: `npm run typecheck`
 Expected: The repo may still fail on unrelated legacy issues, but the new files should parse and resolve.
 
-- [ ] **Step 7: Commit**
+- [x] **Step 7: Commit**
 
 ```bash
 git add src/features/knowledge-workflow/server src/features/chat/store src/features/knowledge-workflow/store
@@ -202,7 +202,7 @@ git commit -m "refactor: scaffold feature boundaries for knowledge workflow"
 - Modify: `src/lib/queryRewrite.ts`
 - Modify: `src/lib/reranker.ts`
 
-- [ ] **Step 1: Write a failing service test for retrieval normalization**
+- [x] **Step 1: Write a failing service test for retrieval normalization**
 
 ```ts
 // src/features/knowledge-workflow/server/__tests__/graph.test.ts
@@ -215,12 +215,12 @@ describe("retrieve service", () => {
 });
 ```
 
-- [ ] **Step 2: Run the test to confirm the gap**
+- [x] **Step 2: Run the test to confirm the gap**
 
 Run: `npx vitest run src/features/knowledge-workflow/server/__tests__/graph.test.ts -t "retrieve service"`
 Expected: FAIL because the test intentionally asserts the not-yet-implemented behavior.
 
-- [ ] **Step 3: Extract the retrieval logic from the legacy route**
+- [x] **Step 3: Extract the retrieval logic from the legacy route**
 
 目标：把 `src/app/api/search/route.ts` 中的 embedding + `match_documents` RPC + match normalization 抽到服务层。
 
@@ -231,7 +231,7 @@ export async function retrieveEvidence() {
 }
 ```
 
-- [ ] **Step 4: Wrap existing rewrite and rerank helpers for feature-local usage**
+- [x] **Step 4: Wrap existing rewrite and rerank helpers for feature-local usage**
 
 ```ts
 // src/features/knowledge-workflow/server/services/rewrite.ts
@@ -251,7 +251,7 @@ export async function rerankEvidence(question: string, docs: any[]) {
 }
 ```
 
-- [ ] **Step 5: Replace direct legacy route internals with service calls where safe**
+- [x] **Step 5: Replace direct legacy route internals with service calls where safe**
 
 目标：先让新服务成为 canonical implementation，旧 route 暂时复用。
 
@@ -260,12 +260,12 @@ export async function rerankEvidence(question: string, docs: any[]) {
 // use retrieveEvidence service instead of inline retrieval internals
 ```
 
-- [ ] **Step 6: Re-run the focused test**
+- [x] **Step 6: Re-run the focused test**
 
 Run: `npx vitest run src/features/knowledge-workflow/server/__tests__/graph.test.ts -t "retrieve service"`
 Expected: PASS
 
-- [ ] **Step 7: Commit**
+- [x] **Step 7: Commit**
 
 ```bash
 git add src/features/knowledge-workflow/server/services src/app/api/search/route.ts src/lib/queryRewrite.ts src/lib/reranker.ts src/features/knowledge-workflow/server/__tests__/graph.test.ts
@@ -289,7 +289,7 @@ git commit -m "refactor: extract workflow retrieval rewrite and rerank services"
 - Modify: `src/features/knowledge-workflow/server/graph.ts`
 - Test: `src/features/knowledge-workflow/server/__tests__/graph.test.ts`
 
-- [ ] **Step 1: Write failing route-path tests**
+- [x] **Step 1: Write failing route-path tests**
 
 ```ts
 describe("knowledge workflow graph", () => {
@@ -303,12 +303,12 @@ describe("knowledge workflow graph", () => {
 });
 ```
 
-- [ ] **Step 2: Run the route-path tests**
+- [x] **Step 2: Run the route-path tests**
 
 Run: `npx vitest run src/features/knowledge-workflow/server/__tests__/graph.test.ts -t "routes"`
 Expected: FAIL
 
-- [ ] **Step 3: Implement `initRun`, `quickRetrieve`, and `routeTask`**
+- [x] **Step 3: Implement `initRun`, `quickRetrieve`, and `routeTask`**
 
 最小代码骨架：
 
@@ -325,7 +325,7 @@ export async function routeTask(state: WorkflowState) {
 }
 ```
 
-- [ ] **Step 4: Implement the downstream nodes for both paths**
+- [x] **Step 4: Implement the downstream nodes for both paths**
 
 ```ts
 // src/features/knowledge-workflow/server/nodes/fallback.ts
@@ -340,7 +340,7 @@ export async function fallback(state: WorkflowState) {
 }
 ```
 
-- [ ] **Step 5: Assemble the graph in `graph.ts`**
+- [x] **Step 5: Assemble the graph in `graph.ts`**
 
 ```ts
 // src/features/knowledge-workflow/server/graph.ts
@@ -351,12 +351,12 @@ export function createKnowledgeWorkflowGraph() {
 }
 ```
 
-- [ ] **Step 6: Re-run the graph tests**
+- [x] **Step 6: Re-run the graph tests**
 
 Run: `npx vitest run src/features/knowledge-workflow/server/__tests__/graph.test.ts`
 Expected: PASS for the new route-path coverage, with future tests still pending.
 
-- [ ] **Step 7: Commit**
+- [x] **Step 7: Commit**
 
 ```bash
 git add src/features/knowledge-workflow/server/nodes src/features/knowledge-workflow/server/graph.ts src/features/knowledge-workflow/server/__tests__/graph.test.ts
@@ -371,7 +371,7 @@ git commit -m "feat: implement unified knowledge workflow graph skeleton"
 - Modify: `src/app/api/agent/route.ts`
 - Modify: `src/app/api/search/route.ts`
 
-- [ ] **Step 1: Write the failing API route test**
+- [x] **Step 1: Write the failing API route test**
 
 ```ts
 import { describe, expect, it } from "vitest";
@@ -383,12 +383,12 @@ describe("POST /api/chat", () => {
 });
 ```
 
-- [ ] **Step 2: Run the API route test**
+- [x] **Step 2: Run the API route test**
 
 Run: `npx vitest run src/app/api/chat/__tests__/route.test.ts`
 Expected: FAIL
 
-- [ ] **Step 3: Implement the unified API route as a thin controller**
+- [x] **Step 3: Implement the unified API route as a thin controller**
 
 ```ts
 // src/app/api/chat/route.ts
@@ -410,7 +410,7 @@ export async function POST() {
 - 工作流事件统一映射为自定义 `data-*` parts
 - route 中不再发自定义 JSONL
 
-- [ ] **Step 4: Deprecate the legacy split routes**
+- [x] **Step 4: Deprecate the legacy split routes**
 
 方式二选一：
 
@@ -424,12 +424,12 @@ export async function POST() {
 export { POST } from "@/app/api/chat/route";
 ```
 
-- [ ] **Step 5: Re-run the route test**
+- [x] **Step 5: Re-run the route test**
 
 Run: `npx vitest run src/app/api/chat/__tests__/route.test.ts`
 Expected: PASS
 
-- [ ] **Step 6: Commit**
+- [x] **Step 6: Commit**
 
 ```bash
 git add src/app/api/chat src/app/api/agent/route.ts src/app/api/search/route.ts
@@ -445,7 +445,7 @@ git commit -m "feat: add unified chat api route"
 - Modify: `src/features/knowledge-workflow/store/workflowRuntimeStore.ts`
 - Test: `src/store/__tests__/chatStore.test.ts`
 
-- [ ] **Step 1: Write a failing reducer test for route and evidence events**
+- [x] **Step 1: Write a failing reducer test for route and evidence events**
 
 ```ts
 import { describe, expect, it } from "vitest";
@@ -457,12 +457,12 @@ describe("chat runtime reducer", () => {
 });
 ```
 
-- [ ] **Step 2: Run the reducer test**
+- [x] **Step 2: Run the reducer test**
 
 Run: `npx vitest run src/store/__tests__/chatStore.test.ts`
 Expected: FAIL
 
-- [ ] **Step 3: Move chat answer state into `features/chat/store/chatRuntimeStore.ts`**
+- [x] **Step 3: Move chat answer state into `features/chat/store/chatRuntimeStore.ts`**
 
 ```ts
 export const useChatRuntimeStore = create(() => ({
@@ -473,7 +473,7 @@ export const useChatRuntimeStore = create(() => ({
 }));
 ```
 
-- [ ] **Step 4: Move route/trace/evidence state into `features/knowledge-workflow/store/workflowRuntimeStore.ts`**
+- [x] **Step 4: Move route/trace/evidence state into `features/knowledge-workflow/store/workflowRuntimeStore.ts`**
 
 ```ts
 export const useWorkflowRuntimeStore = create(() => ({
@@ -486,7 +486,7 @@ export const useWorkflowRuntimeStore = create(() => ({
 }));
 ```
 
-- [ ] **Step 5: Turn the old `src/store/*` files into compatibility shims or remove them**
+- [x] **Step 5: Turn the old `src/store/*` files into compatibility shims or remove them**
 
 最小过渡方案：
 
@@ -495,12 +495,12 @@ export const useWorkflowRuntimeStore = create(() => ({
 export { useChatRuntimeStore as useChatStore } from "@/features/chat/store/chatRuntimeStore";
 ```
 
-- [ ] **Step 6: Re-run the reducer test**
+- [x] **Step 6: Re-run the reducer test**
 
 Run: `npx vitest run src/store/__tests__/chatStore.test.ts`
 Expected: PASS
 
-- [ ] **Step 7: Commit**
+- [x] **Step 7: Commit**
 
 ```bash
 git add src/store src/features/chat/store src/features/knowledge-workflow/store src/store/__tests__/chatStore.test.ts
@@ -518,7 +518,7 @@ git commit -m "refactor: move runtime stores into feature modules"
 - Modify: `src/components/SourcesPanel.tsx`
 - Modify: `src/components/AgentStepsPanel.tsx`
 
-- [ ] **Step 1: Write a failing UI test for route + evidence rendering**
+- [x] **Step 1: Write a failing UI test for route + evidence rendering**
 
 ```ts
 import { describe, expect, it } from "vitest";
@@ -530,12 +530,12 @@ describe("Ask UI", () => {
 });
 ```
 
-- [ ] **Step 2: Run the UI test**
+- [x] **Step 2: Run the UI test**
 
 Run: `npm test`
 Expected: FAIL because the new panels are not wired yet.
 
-- [ ] **Step 3: Create `TracePanel` and `EvidencePanel` as feature-private components**
+- [x] **Step 3: Create `TracePanel` and `EvidencePanel` as feature-private components**
 
 ```tsx
 // src/features/chat/components/TracePanel.tsx
@@ -551,7 +551,7 @@ export default function EvidencePanel() {
 }
 ```
 
-- [ ] **Step 4: Update `src/app/ask/page.tsx` to render the unified state**
+- [x] **Step 4: Update `src/app/ask/page.tsx` to render the unified state**
 
 要求：
 
@@ -561,19 +561,19 @@ export default function EvidencePanel() {
 - route / trace / evidence / verification 由自定义 `data-*` parts 驱动
 - Trace 与 Evidence 通过新组件展示
 
-- [ ] **Step 5: Move workflow-private UI out of global components where possible**
+- [x] **Step 5: Move workflow-private UI out of global components where possible**
 
 最小原则：
 
 - `SourcesPanel` 不再作为全局组件演进
 - `AgentStepsPanel` 不再作为全局组件演进
 
-- [ ] **Step 6: Re-run the UI tests**
+- [x] **Step 6: Re-run the UI tests**
 
 Run: `npm test`
 Expected: PASS or only fail in tests that still target intentionally retired legacy behavior.
 
-- [ ] **Step 7: Commit**
+- [x] **Step 7: Commit**
 
 ```bash
 git add src/features/chat/components src/app/ask/page.tsx src/app/agent/components src/components/SourcesPanel.tsx src/components/AgentStepsPanel.tsx
@@ -588,7 +588,7 @@ git commit -m "feat: move ask ui to unified workflow runtime model"
 - Modify: `src/lib/crag/types.ts`
 - Modify: `src/features/knowledge-workflow/server/*`
 
-- [ ] **Step 1: Decide the migration posture**
+- [x] **Step 1: Decide the migration posture**
 
 目标不是立刻删掉 `src/lib/crag`，而是停止把它当作 canonical implementation。
 
@@ -597,7 +597,7 @@ git commit -m "feat: move ask ui to unified workflow runtime model"
 - 新 workflow 代码都落在 `features/knowledge-workflow`
 - `lib/crag` 只保留 compatibility layer，随后逐步删除
 
-- [ ] **Step 2: Turn `lib/crag` into a compatibility shim**
+- [x] **Step 2: Turn `lib/crag` into a compatibility shim**
 
 最小示例：
 
@@ -606,19 +606,19 @@ git commit -m "feat: move ask ui to unified workflow runtime model"
 export { createKnowledgeWorkflowGraph } from "@/features/knowledge-workflow/server/graph";
 ```
 
-- [ ] **Step 3: Move any remaining canonical types and node logic**
+- [x] **Step 3: Move any remaining canonical types and node logic**
 
 要求：
 
 - 不再在 `src/lib/crag` 内新增逻辑
 - 所有后续改动只打到 `features/knowledge-workflow`
 
-- [ ] **Step 4: Run tests for the migrated graph**
+- [x] **Step 4: Run tests for the migrated graph**
 
 Run: `npx vitest run src/features/knowledge-workflow/server/__tests__/graph.test.ts src/app/api/chat/__tests__/route.test.ts`
 Expected: PASS
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add src/lib/crag src/features/knowledge-workflow/server
@@ -635,7 +635,7 @@ git commit -m "refactor: retire lib crag as canonical workflow module"
 - Modify: `src/lib/supabaseServer.ts`
 - Modify: `README.md` or implementation notes if needed
 
-- [ ] **Step 1: Move duplicate Supabase helpers behind one shared boundary**
+- [x] **Step 1: Move duplicate Supabase helpers behind one shared boundary**
 
 目标：不再同时维护 `src/utils/supabase/*` 和 `src/lib/supabase*` 两套语义重叠的入口。
 
@@ -646,7 +646,7 @@ git commit -m "refactor: retire lib crag as canonical workflow module"
 export { getSupabaseServerClient as createClient } from "@/lib/supabaseServer";
 ```
 
-- [ ] **Step 2: Run build, typecheck, and tests**
+- [x] **Step 2: Run build, typecheck, and tests**
 
 Run:
 
@@ -662,7 +662,7 @@ Expected:
 - typecheck passes, or remaining issues are explicitly known and fixed immediately
 - tests pass
 
-- [ ] **Step 3: Verify the four manual QA scenarios**
+- [x] **Step 3: Verify the four manual QA scenarios**
 
 Check manually:
 
@@ -671,7 +671,7 @@ Check manually:
 - 模糊问题 -> `clarification` 或 `workflow_qa`
 - 证据不足 -> fallback
 
-- [ ] **Step 4: Commit**
+- [x] **Step 4: Commit**
 
 ```bash
 git add src/utils src/lib README.md
