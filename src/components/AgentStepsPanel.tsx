@@ -1,4 +1,6 @@
 // src/components/AgentStepsPanel.tsx
+// @deprecated: This component is being migrated to features/chat/components/.
+// Do not add new workflow-specific features here.
 "use client";
 
 import { useState } from "react";

@@ -1,3 +1,5 @@
+// @deprecated: This component is being migrated to features/chat/components/.
+// Do not add new workflow-specific features here.
 "use client";
 
 import type { Source } from "@/types/chat";
