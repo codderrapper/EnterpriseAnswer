@@ -7,6 +7,8 @@ import {
   isNearBottom,
 } from "@/app/ask/scroll";
 import { useWorkflowRuntimeStore } from "@/features/knowledge-workflow/store/workflowRuntimeStore";
+import type { EvidenceItem, TraceNode, VerificationResult } from "@/features/knowledge-workflow/store/workflowRuntimeStore";
+import type { WorkflowRoute } from "@/features/knowledge-workflow/server/types";
 import { useChat } from "@/features/chat/hooks/useChat";
 import TracePanel from "@/features/chat/components/TracePanel";
 import EvidencePanel from "@/features/chat/components/EvidencePanel";
@@ -109,6 +111,32 @@ export default function AskPage() {
     onError: (err) => {
       console.error("Chat error:", err);
     },
+    onDataChunk: useCallback((type: string, data: unknown) => {
+      if (!data || typeof data !== "object") return;
+      const d = data as Record<string, unknown>;
+
+      if (type === "data-route") {
+        const route = d.route as string | undefined;
+        const reason = (d.reason as string | undefined) ?? "";
+        if (route) workflowStore.applyRouteEvent(route as WorkflowRoute, reason);
+      } else if (type === "data-evidence") {
+        const stage = d.stage as "retrieved" | "reranked" | "selected" | undefined;
+        const documents = d.documents as EvidenceItem[] | undefined;
+        if (stage && Array.isArray(documents)) workflowStore.applyEvidenceEvent(stage, documents);
+      } else if (type === "data-node") {
+        const node = d.node as string | undefined;
+        const status = d.status as TraceNode["status"] | undefined;
+        if (node && status) workflowStore.applyNodeEvent(node, status);
+      } else if (type === "data-verification") {
+        if (typeof d.grounded === "boolean" && typeof d.reason === "string") {
+          workflowStore.applyVerificationEvent({
+            grounded: d.grounded,
+            reason: d.reason,
+            unsupportedClaims: d.unsupportedClaims as number | undefined,
+          } as VerificationResult);
+        }
+      }
+    }, [workflowStore]),
   });
 
   const sendMessage = useCallback(

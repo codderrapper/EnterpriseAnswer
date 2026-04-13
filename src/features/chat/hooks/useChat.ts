@@ -7,16 +7,13 @@
  *   - POST { messages } to /api/chat
  *   - Parse the UI-message-stream SSE response
  *   - Build text content from UIMessage parts for rendering
- *   - Forward data-route / data-evidence / data-node / data-verification chunks to workflowRuntimeStore
+ *   - Forward data-* chunks via the onDataChunk callback (caller decides what to do with them)
  */
 
 import { useCallback, useRef, useState } from "react";
 import { generateId, uiMessageChunkSchema } from "ai";
 import { parseJsonEventStream } from "@ai-sdk/provider-utils";
 import type { UIMessageChunk } from "ai";
-import { useWorkflowRuntimeStore } from "@/features/knowledge-workflow/store/workflowRuntimeStore";
-import type { EvidenceItem, TraceNode, VerificationResult } from "@/features/knowledge-workflow/store/workflowRuntimeStore";
-import type { WorkflowRoute } from "@/features/knowledge-workflow/server/types";
 
 /** Simplified message shape for rendering. */
 export interface ChatMessage {
@@ -28,6 +25,7 @@ export interface ChatMessage {
 interface UseChatOptions {
   api?: string;
   onError?: (err: Error) => void;
+  onDataChunk?: (type: string, data: unknown) => void;
 }
 
 interface UseChatReturn {
@@ -36,10 +34,9 @@ interface UseChatReturn {
   isLoading: boolean;
 }
 
-export function useChat({ api = "/api/chat", onError }: UseChatOptions = {}): UseChatReturn {
+export function useChat({ api = "/api/chat", onError, onDataChunk }: UseChatOptions = {}): UseChatReturn {
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [isLoading, setIsLoading] = useState(false);
-  const workflowStore = useWorkflowRuntimeStore();
 
   // Keep a ref to the latest messages for building the API payload
   const messagesRef = useRef<ChatMessage[]>(messages);
@@ -126,10 +123,10 @@ export function useChat({ api = "/api/chat", onError }: UseChatOptions = {}): Us
                 break;
 
               default: {
-                // Handle data-* chunks for workflow store
+                // Handle data-* chunks via callback
                 if (chunk.type.startsWith("data-")) {
                   const dataChunk = chunk as { type: string; data: unknown };
-                  handleDataChunk(dataChunk.type, dataChunk.data, workflowStore);
+                  onDataChunk?.(dataChunk.type, dataChunk.data);
                 }
                 break;
               }
@@ -148,56 +145,9 @@ export function useChat({ api = "/api/chat", onError }: UseChatOptions = {}): Us
         setIsLoading(false);
       }
     },
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-    [api, onError],
+    [api, onError, onDataChunk],
   );
 
   return { messages, append, isLoading };
 }
 
-type WorkflowStoreActions = {
-  applyRouteEvent: (route: WorkflowRoute, reason: string) => void;
-  applyEvidenceEvent: (stage: "retrieved" | "reranked" | "selected", documents: EvidenceItem[]) => void;
-  applyNodeEvent: (node: string, status: TraceNode["status"]) => void;
-  applyVerificationEvent: (result: VerificationResult) => void;
-};
-
-/**
- * Route data-* stream events to the workflowRuntimeStore.
- */
-function handleDataChunk(
-  type: string,
-  data: unknown,
-  store: WorkflowStoreActions,
-): void {
-  if (!data || typeof data !== "object") return;
-  const d = data as Record<string, unknown>;
-
-  if (type === "data-route") {
-    const route = d.route as string | undefined;
-    const reason = (d.reason as string | undefined) ?? "";
-    if (route) {
-      store.applyRouteEvent(route as WorkflowRoute, reason);
-    }
-  } else if (type === "data-evidence") {
-    const stage = d.stage as "retrieved" | "reranked" | "selected" | undefined;
-    const documents = d.documents as EvidenceItem[] | undefined;
-    if (stage && Array.isArray(documents)) {
-      store.applyEvidenceEvent(stage, documents);
-    }
-  } else if (type === "data-node") {
-    const node = d.node as string | undefined;
-    const status = d.status as TraceNode["status"] | undefined;
-    if (node && status) {
-      store.applyNodeEvent(node, status);
-    }
-  } else if (type === "data-verification") {
-    if (typeof d.grounded === "boolean" && typeof d.reason === "string") {
-      store.applyVerificationEvent({
-        grounded: d.grounded,
-        reason: d.reason,
-        unsupportedClaims: d.unsupportedClaims as number | undefined,
-      });
-    }
-  }
-}
