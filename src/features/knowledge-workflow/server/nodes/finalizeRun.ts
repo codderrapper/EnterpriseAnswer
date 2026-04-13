@@ -15,6 +15,8 @@ export async function finalizeRun(
     requestId,
     data: {
       kind: "run_completed",
+      ts: Date.now(),
+      requestId,
       route: state.route,
       status: state.finalAnswer ? "answered" : "fallback",
     },

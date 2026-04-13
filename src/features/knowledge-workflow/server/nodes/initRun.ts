@@ -7,13 +7,13 @@ export async function initRun(
   config?: RunnableConfig,
 ): Promise<Partial<WorkflowState>> {
   const send = config?.configurable?.send as ((e: WorkflowEvent) => void) | undefined;
-  const requestId = config?.configurable?.requestId as string ?? crypto.randomUUID();
+  const requestId = (config?.configurable?.requestId as string) ?? "";
 
   send?.({
     type: "data-run",
     ts: Date.now(),
     requestId,
-    data: { kind: "run_started", question: state.userQuestion, workspaceId: state.workspaceId },
+    data: { kind: "run_started", ts: Date.now(), requestId, question: state.userQuestion, workspaceId: state.workspaceId },
   });
 
   return {

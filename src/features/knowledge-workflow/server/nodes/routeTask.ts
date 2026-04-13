@@ -30,6 +30,8 @@ export async function routeTask(
     requestId,
     data: {
       kind: "route_decided",
+      ts: Date.now(),
+      requestId,
       route,
       reason: isComparison ? "question_requires_comparison" : isLowConfidence ? "low_confidence_evidence" : "direct_question",
     },
