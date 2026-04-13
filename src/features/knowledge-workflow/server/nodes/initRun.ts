@@ -1,6 +1,21 @@
 import type { WorkflowState } from "../state";
+import type { RunnableConfig } from "@langchain/core/runnables";
+import type { WorkflowEvent } from "../events";
 
-export async function initRun(state: WorkflowState): Promise<Partial<WorkflowState>> {
+export async function initRun(
+  state: WorkflowState,
+  config?: RunnableConfig,
+): Promise<Partial<WorkflowState>> {
+  const send = config?.configurable?.send as ((e: WorkflowEvent) => void) | undefined;
+  const requestId = config?.configurable?.requestId as string ?? crypto.randomUUID();
+
+  send?.({
+    type: "data-run",
+    ts: Date.now(),
+    requestId,
+    data: { kind: "run_started", question: state.userQuestion, workspaceId: state.workspaceId },
+  });
+
   return {
     normalizedQuestion: state.userQuestion.trim(),
     rewriteCount: 0,
