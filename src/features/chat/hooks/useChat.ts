@@ -79,10 +79,11 @@ export function useChat({ api = "/api/chat", onError, onDataChunk }: UseChatOpti
           { id: assistantId, role: "assistant", content: "" },
         ]);
 
-        // Parse the SSE JSON-event stream into UIMessageChunk objects
+        // Parse the SSE JSON-event stream with a relaxed schema wrapper 
+        // to prevent Vercel AI SDK from silently dropping our custom `data-*` chunks.
         const chunkStream = parseJsonEventStream({
           stream: response.body,
-          schema: uiMessageChunkSchema,
+          schema: { safeParse: (val: unknown) => ({ success: true, value: val }) } as any,
         });
 
         // Track accumulated text for the assistant message
