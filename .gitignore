@@ -42,5 +42,4 @@ next-env.d.ts
 \n# AI/Agent configs
 .claude/
 .superpowers/
-docs/superpowers/
 \n# Worktrees\n.worktrees/
