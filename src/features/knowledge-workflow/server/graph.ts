@@ -35,7 +35,7 @@ function routeAfterTask(
 ): "retrieveEvidence" | "rewriteQuery" | "fallback" {
   if (state.route === "fast_qa") return "retrieveEvidence";
   if (state.route === "workflow_qa") return "rewriteQuery";
-  return "retrieveEvidence"; // default
+  return "fallback"; // clarification and unrecognized routes go to fallback
 }
 
 const workflow = new StateGraph(WorkflowStateAnnotation)

@@ -31,7 +31,7 @@ export async function retrieveEvidence(
       ts: Date.now(),
       requestId,
       stage: "retrieved",
-      documents: docs.map(d => ({ id: d.id, documentId: d.documentId, similarity: d.similarity, snippet: d.content.slice(0, 200) })),
+      documents: docs.map(d => ({ id: d.id, documentId: d.documentId, similarity: d.similarity, content: d.content.slice(0, 200) })),
     },
   });
 

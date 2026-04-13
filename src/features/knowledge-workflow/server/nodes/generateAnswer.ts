@@ -1,6 +1,7 @@
 import type { WorkflowState } from "../state";
 import { getAIClient, AI_MODEL } from "@/lib/ai-client";
 import type { RunnableConfig } from "@langchain/core/runnables";
+import type { WorkflowEvent } from "../events";
 
 const SYSTEM_PROMPT = `你是企业知识库助手。请根据以下文档内容回答用户问题。
 要求：
@@ -12,6 +13,11 @@ export async function generateAnswer(
   state: WorkflowState,
   config?: RunnableConfig,
 ): Promise<Partial<WorkflowState>> {
+  const send = config?.configurable?.send as ((e: WorkflowEvent) => void) | undefined;
+  const requestId = config?.configurable?.requestId as string ?? "";
+
+  send?.({ type: "data-node", ts: Date.now(), requestId, data: { node: "generateAnswer", status: "running", ts: Date.now(), requestId } });
+
   const evidence =
     state.selectedEvidence.length > 0
       ? state.selectedEvidence
@@ -20,6 +26,7 @@ export async function generateAnswer(
         : state.retrievedDocs;
 
   if (evidence.length === 0) {
+    send?.({ type: "data-node", ts: Date.now(), requestId, data: { node: "generateAnswer", status: "completed", ts: Date.now(), requestId } });
     return { answerDraft: "" };
   }
 
@@ -37,5 +44,6 @@ export async function generateAnswer(
   });
 
   const answer = completion.choices[0]?.message?.content ?? "";
+  send?.({ type: "data-node", ts: Date.now(), requestId, data: { node: "generateAnswer", status: "completed", ts: Date.now(), requestId } });
   return { answerDraft: answer };
 }
