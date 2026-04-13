@@ -1,3 +1,4 @@
+// @deprecated: Migrating to useChatRuntimeStore from @/features/chat/store/chatRuntimeStore. Do not add new code here.
 /**
  * ⭐ 面试亮点（useChatStore）：
  * 1. 使用 Zustand 管理 Chat 的业务状态（messages / steps / loading / input），并集中封装 sendMessage 流程，组件只负责展示。

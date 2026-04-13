@@ -1,3 +1,4 @@
+// @deprecated: Migrating to features/knowledge-workflow/store/workflowRuntimeStore. Do not add new code here.
 // src/store/agentStore.ts
 // 消费 /api/agent 的 JSONL 流，将 AgentEvent 映射到 UI 状态。
 // 与 chatStore 相同的流解析模式，但状态结构专为 CRAG 可视化设计。
