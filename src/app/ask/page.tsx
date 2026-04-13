@@ -104,7 +104,11 @@ export default function AskPage() {
   const previousMessageCountRef = useRef(0);
   const [isAutoFollowEnabled, setIsAutoFollowEnabled] = useState(true);
 
-  const workflowStore = useWorkflowRuntimeStore();
+  const applyRouteEvent = useWorkflowRuntimeStore((s) => s.applyRouteEvent);
+  const applyEvidenceEvent = useWorkflowRuntimeStore((s) => s.applyEvidenceEvent);
+  const applyNodeEvent = useWorkflowRuntimeStore((s) => s.applyNodeEvent);
+  const applyVerificationEvent = useWorkflowRuntimeStore((s) => s.applyVerificationEvent);
+  const resetWorkflow = useWorkflowRuntimeStore((s) => s.reset);
 
   const { messages, append, isLoading } = useChat({
     api: "/api/chat",
@@ -118,33 +122,33 @@ export default function AskPage() {
       if (type === "data-route") {
         const route = d.route as string | undefined;
         const reason = (d.reason as string | undefined) ?? "";
-        if (route) workflowStore.applyRouteEvent(route as WorkflowRoute, reason);
+        if (route) applyRouteEvent(route as WorkflowRoute, reason);
       } else if (type === "data-evidence") {
         const stage = d.stage as "retrieved" | "reranked" | "selected" | undefined;
         const documents = d.documents as EvidenceItem[] | undefined;
-        if (stage && Array.isArray(documents)) workflowStore.applyEvidenceEvent(stage, documents);
+        if (stage && Array.isArray(documents)) applyEvidenceEvent(stage, documents);
       } else if (type === "data-node") {
         const node = d.node as string | undefined;
         const status = d.status as TraceNode["status"] | undefined;
-        if (node && status) workflowStore.applyNodeEvent(node, status);
+        if (node && status) applyNodeEvent(node, status);
       } else if (type === "data-verification") {
         if (typeof d.grounded === "boolean" && typeof d.reason === "string") {
-          workflowStore.applyVerificationEvent({
+          applyVerificationEvent({
             grounded: d.grounded,
             reason: d.reason,
             unsupportedClaims: d.unsupportedClaims as number | undefined,
           } as VerificationResult);
         }
       }
-    }, [workflowStore]),
+    }, [applyRouteEvent, applyEvidenceEvent, applyNodeEvent, applyVerificationEvent]),
   });
 
   const sendMessage = useCallback(
     async (question: string) => {
-      workflowStore.reset();
+      resetWorkflow();
       await append({ role: "user", content: question });
     },
-    [append, workflowStore],
+    [append, resetWorkflow],
   );
 
   useLayoutEffect(() => {
