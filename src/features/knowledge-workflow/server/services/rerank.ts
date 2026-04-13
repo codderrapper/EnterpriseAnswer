@@ -17,17 +17,19 @@ export async function rerankEvidence(
 
   const reranked = await rerankChunks(question, rerankItems);
 
-  // Map back: preserve all EvidenceDoc fields, patch in relevanceScore → relevance label
-  return reranked.map((item, index): EvidenceDoc => {
-    // Find the original doc by id to carry forward fields like `relevance`
-    const original = docs.find((d) => Number(d.id) === item.id) ?? docs[index];
+  // Map reranked items back to EvidenceDoc
+  // Note: id coercion (string→number→string) only works while normalizeMatchRow
+  // produces numeric string IDs. If that changes, update this mapping.
+  return reranked.map((item): EvidenceDoc => {
+    const original = docs.find((d) => Number(d.id) === item.id);
     const score = item.relevanceScore ?? 0;
     const relevance: EvidenceDoc["relevance"] =
       score >= 6 ? "relevant" : score >= 3 ? "partial" : "irrelevant";
-
     return {
-      ...original,
-      similarity: item.similarity ?? original.similarity,
+      id: String(item.id),
+      documentId: original?.documentId ?? item.document_id,
+      content: item.content,
+      similarity: original?.similarity,
       relevance,
     };
   });

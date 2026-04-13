@@ -36,7 +36,7 @@ export async function retrieveEvidence(params: {
   const { question, workspaceId, supabase, topK = 5, threshold = 0.4 } = params;
 
   const embeddings = getEmbeddings();
-  const [queryVector] = await embeddings.embedDocuments([question]);
+  const queryVector = await embeddings.embedQuery(question);
 
   const { data, error } = await supabase.rpc("match_documents", {
     query_embedding: queryVector,
